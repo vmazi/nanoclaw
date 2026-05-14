@@ -20,6 +20,7 @@ vi.mock('child_process', () => ({
 import {
   CONTAINER_RUNTIME_BIN,
   readonlyMountArgs,
+  writableMountArgs,
   stopContainer,
   ensureContainerRuntimeRunning,
   cleanupOrphans,
@@ -34,9 +35,24 @@ beforeEach(() => {
 // --- Pure functions ---
 
 describe('readonlyMountArgs', () => {
-  it('returns -v flag with :ro suffix', () => {
+  it('returns -v flag with :ro suffix (plus :z on Linux for SELinux)', () => {
     const args = readonlyMountArgs('/host/path', '/container/path');
-    expect(args).toEqual(['-v', '/host/path:/container/path:ro']);
+    const expected =
+      process.platform === 'linux'
+        ? ['-v', '/host/path:/container/path:ro,z']
+        : ['-v', '/host/path:/container/path:ro'];
+    expect(args).toEqual(expected);
+  });
+});
+
+describe('writableMountArgs', () => {
+  it('returns -v flag with :z suffix on Linux, no suffix elsewhere', () => {
+    const args = writableMountArgs('/host/path', '/container/path');
+    const expected =
+      process.platform === 'linux'
+        ? ['-v', '/host/path:/container/path:z']
+        : ['-v', '/host/path:/container/path'];
+    expect(args).toEqual(expected);
   });
 });
 

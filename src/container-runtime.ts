@@ -20,9 +20,28 @@ export function hostGatewayArgs(): string[] {
   return [];
 }
 
+/**
+ * Build the option suffix for a bind mount (e.g. ":ro,z").
+ *
+ * On Linux we always append `z` so podman/docker relabel the host directory
+ * for SELinux. The flag is a no-op on Docker daemons without SELinux support
+ * and on non-Linux platforms, so we only emit it on Linux.
+ */
+function mountOptionSuffix(readonly: boolean): string {
+  const opts: string[] = [];
+  if (readonly) opts.push('ro');
+  if (os.platform() === 'linux') opts.push('z');
+  return opts.length > 0 ? `:${opts.join(',')}` : '';
+}
+
 /** Returns CLI args for a readonly bind mount. */
 export function readonlyMountArgs(hostPath: string, containerPath: string): string[] {
-  return ['-v', `${hostPath}:${containerPath}:ro`];
+  return ['-v', `${hostPath}:${containerPath}${mountOptionSuffix(true)}`];
+}
+
+/** Returns CLI args for a writable bind mount. */
+export function writableMountArgs(hostPath: string, containerPath: string): string[] {
+  return ['-v', `${hostPath}:${containerPath}${mountOptionSuffix(false)}`];
 }
 
 /** Stop a container by name. Uses execFileSync to avoid shell injection. */

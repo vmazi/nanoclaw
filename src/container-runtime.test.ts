@@ -72,6 +72,40 @@ describe('stopContainer', () => {
   });
 });
 
+// --- userNamespaceArgs / isPodman ---
+
+describe('userNamespaceArgs', () => {
+  // The runtime caches isPodman() after first call, so use resetModules to
+  // get a fresh module for each test and probe both branches.
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it('returns --userns=keep-id when BuildahVersion is non-empty (podman, Linux)', async () => {
+    if (process.platform !== 'linux') return; // gated to Linux
+    mockExecSync.mockReturnValueOnce('1.43.1\n');
+    const mod = await import('./container-runtime.js');
+    expect(mod.isPodman()).toBe(true);
+    expect(mod.userNamespaceArgs()).toEqual(['--userns=keep-id']);
+  });
+
+  it('returns [] when BuildahVersion is empty (real Docker)', async () => {
+    mockExecSync.mockReturnValueOnce('\n');
+    const mod = await import('./container-runtime.js');
+    expect(mod.isPodman()).toBe(false);
+    expect(mod.userNamespaceArgs()).toEqual([]);
+  });
+
+  it('returns [] when probe fails (treat as not-podman)', async () => {
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('docker not installed');
+    });
+    const mod = await import('./container-runtime.js');
+    expect(mod.isPodman()).toBe(false);
+    expect(mod.userNamespaceArgs()).toEqual([]);
+  });
+});
+
 // --- ensureContainerRuntimeRunning ---
 
 describe('ensureContainerRuntimeRunning', () => {

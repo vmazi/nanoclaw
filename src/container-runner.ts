@@ -27,9 +27,11 @@ import {
   hostGatewayArgs,
   readonlyMountArgs,
   stopContainer,
+  userNamespaceArgs,
   writableMountArgs,
 } from './container-runtime.js';
 import { composeGroupClaudeMd } from './claude-md-compose.js';
+import { readEnvFile } from './env.js';
 import { getAgentGroup } from './db/agent-groups.js';
 import { getDb, hasTable } from './db/connection.js';
 import { initGroupFilesystem } from './group-init.js';
@@ -438,8 +440,23 @@ async function buildContainerArgs(
   }
   log.info('OneCLI gateway applied', { containerName });
 
+  // OAuth override: OneCLI sets ANTHROPIC_API_KEY=placeholder unconditionally,
+  // but Claude Code only sends Authorization: Bearer (which our generic OAuth
+  // secret rewrites) when ANTHROPIC_API_KEY is unset. Order matters — this
+  // appends after applyContainerConfig so the empty value wins on the docker
+  // command line. Set by setup/auth.ts when an sk-ant-oat01-... token is
+  // stored as a generic+Authorization secret.
+  const authMethod = readEnvFile(['NANOCLAW_ANTHROPIC_AUTH_METHOD']).NANOCLAW_ANTHROPIC_AUTH_METHOD;
+  if (authMethod === 'oauth') {
+    args.push('-e', 'ANTHROPIC_API_KEY=');
+    args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
   // Host gateway
   args.push(...hostGatewayArgs());
+
+  // User namespace mapping (rootless podman only — see container-runtime.ts)
+  args.push(...userNamespaceArgs());
 
   // User mapping
   const hostUid = process.getuid?.();

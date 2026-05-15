@@ -1,4 +1,5 @@
-import type { McpServerConfig } from '../../container-config.js';
+import path from 'path';
+import type { McpServerConfig, AdditionalMountConfig } from '../../container-config.js';
 import { buildAgentGroupImage, killContainer, wakeContainer } from '../../container-runner.js';
 import { restartAgentGroupContainers } from '../../container-restart.js';
 import { getSession } from '../../db/sessions.js';
@@ -277,6 +278,57 @@ registerResource({
           removed: { apt: apt || null, npm: npm || null },
           note: 'Image rebuild required for package changes to take effect.',
         };
+      },
+    },
+    'config add-mount': {
+      access: 'approval',
+      description:
+        'Add an additional host-path mount to a group. The host path must be under an allowed root in ~/.config/nanoclaw/mount-allowlist.json. ' +
+        'Mounts land at /workspace/extra/<container-path> inside the container. Requires `ncl groups restart` to take effect. ' +
+        'Use --id <group-id> --host-path <path> [--container-path <relative-name>] [--readonly].',
+      handler: async (args) => {
+        const id = args.id as string;
+        if (!id) throw new Error('--id is required');
+        const hostPath = (args['host-path'] ?? args.host_path) as string | undefined;
+        if (!hostPath) throw new Error('--host-path is required');
+
+        const row = getContainerConfig(id);
+        if (!row) throw new Error(`No container config for group: ${id}`);
+
+        const existing = JSON.parse(row.additional_mounts) as AdditionalMountConfig[];
+        if (existing.find((m) => m.hostPath === hostPath)) {
+          throw new Error(`Mount for host path "${hostPath}" already exists`);
+        }
+
+        const containerPath = (args['container-path'] ?? args.container_path) as string | undefined;
+        const readonly = args.readonly === true || args.readonly === 'true';
+
+        const mount: AdditionalMountConfig = { hostPath, containerPath: containerPath ?? path.basename(hostPath), readonly };
+        existing.push(mount);
+        updateContainerConfigJson(id, 'additional_mounts', existing);
+
+        return { added: mount, note: 'Restart required for mount to take effect. Path will be at /workspace/extra/' + mount.containerPath };
+      },
+    },
+    'config remove-mount': {
+      access: 'approval',
+      description:
+        'Remove an additional mount from a group. Use --id <group-id> --host-path <path>.',
+      handler: async (args) => {
+        const id = args.id as string;
+        if (!id) throw new Error('--id is required');
+        const hostPath = (args['host-path'] ?? args.host_path) as string | undefined;
+        if (!hostPath) throw new Error('--host-path is required');
+
+        const row = getContainerConfig(id);
+        if (!row) throw new Error(`No container config for group: ${id}`);
+
+        const existing = JSON.parse(row.additional_mounts) as AdditionalMountConfig[];
+        const filtered = existing.filter((m) => m.hostPath !== hostPath);
+        if (filtered.length === existing.length) throw new Error(`No mount found for host path "${hostPath}"`);
+        updateContainerConfigJson(id, 'additional_mounts', filtered);
+
+        return { removed: hostPath };
       },
     },
   },

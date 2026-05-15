@@ -18,5 +18,7 @@
  */
 import { registerDeliveryAction } from '../../delivery.js';
 import { handleCreateAgent } from './create-agent.js';
+import { handleCreateWorktreeAgent } from './create-worktree-agent.js';
 
 registerDeliveryAction('create_agent', handleCreateAgent);
+registerDeliveryAction('create_worktree_agent', handleCreateWorktreeAgent);

@@ -12,6 +12,7 @@ import './agents.js';
 import './self-mod.js';
 import './host-control.js';
 import './host-run.js';
+import './worktree-agent.js';
 import { startMcpServer } from './server.js';
 
 function log(msg: string): void {

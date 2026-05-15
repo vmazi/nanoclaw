@@ -356,6 +356,39 @@ export function validateAdditionalMounts(
 }
 
 /**
+ * Add an allowed root to the mount allowlist, creating the file if needed.
+ * Resets the in-memory cache so the next mount validation sees the new entry.
+ */
+export function addAllowedRoot(root: AllowedRoot): void {
+  const configDir = path.dirname(MOUNT_ALLOWLIST_PATH);
+  if (!fs.existsSync(configDir)) {
+    fs.mkdirSync(configDir, { recursive: true });
+  }
+
+  let allowlist: MountAllowlist;
+  if (fs.existsSync(MOUNT_ALLOWLIST_PATH)) {
+    try {
+      allowlist = JSON.parse(fs.readFileSync(MOUNT_ALLOWLIST_PATH, 'utf-8')) as MountAllowlist;
+    } catch {
+      allowlist = { allowedRoots: [], blockedPatterns: [] };
+    }
+  } else {
+    allowlist = { allowedRoots: [], blockedPatterns: [] };
+  }
+
+  const expandedPath = expandPath(root.path);
+  const alreadyPresent = allowlist.allowedRoots.some((r) => expandPath(r.path) === expandedPath);
+  if (!alreadyPresent) {
+    allowlist.allowedRoots.push(root);
+    fs.writeFileSync(MOUNT_ALLOWLIST_PATH, JSON.stringify(allowlist, null, 2) + '\n');
+  }
+
+  // Reset cache so the next spawn picks up the updated allowlist.
+  cachedAllowlist = null;
+  allowlistLoadError = null;
+}
+
+/**
  * Generate a template allowlist file for users to customize
  */
 export function generateAllowlistTemplate(): string {

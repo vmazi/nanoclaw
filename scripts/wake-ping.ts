@@ -54,7 +54,7 @@ const seq = m + 2;
 
 const rev = gitRev();
 const content = JSON.stringify({
-  text: `[wake-ping] You just came online. Send EXACTLY this DM to vmaz on Signal — do NOT try to verify the revision yourself from /app (that's the container, not the host repo); the rev below was captured on the host where the actual nanoclaw repo lives:\n\n<message to="vmaz">🧠 🟢 Cortex online @ ${new Date().toLocaleTimeString()} — rev ${rev}</message>`,
+  text: `[wake-ping] You just came online. Send EXACTLY this DM to vmaz on Signal — do NOT try to verify the revision yourself from /app (that's the container, not the host repo); the rev below was captured on the host where the actual nanoclaw repo lives:\n\n<message to="vmaz">🧠\n🟢 Cortex online @ ${new Date().toLocaleTimeString()} — rev ${rev}</message>`,
   sender: 'system',
   senderId: 'system',
   senderName: 'System',

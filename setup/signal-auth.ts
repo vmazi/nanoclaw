@@ -37,6 +37,7 @@ const DEFAULT_DEVICE_NAME = 'NanoClaw';
 
 interface SignalAccount {
   account?: string;
+  number?: string;
   registered?: boolean;
 }
 
@@ -59,7 +60,7 @@ function listAccounts(): string[] {
     const parsed = JSON.parse(res.stdout || '[]') as SignalAccount[];
     return parsed
       .filter((a) => a.registered !== false)
-      .map((a) => a.account ?? '')
+      .map((a) => a.account ?? a.number ?? '')
       .filter(Boolean);
   } catch {
     return [];

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Auto-push commits to the cortex fork. Commits to nanoclaw should be rare
+# (capability + dev-tooling additions), so chattiness is fine.
+branch=$(git rev-parse --abbrev-ref HEAD)
+if git remote get-url origin >/dev/null 2>&1; then
+  git push origin "$branch" 2>&1 || echo "post-commit: push to origin/$branch failed" >&2
+fi

@@ -17,6 +17,7 @@ import os from 'os';
 import path from 'path';
 
 import { log } from '../src/log.js';
+import { readEnvKey } from './environment.js';
 import { emitStatus } from './status.js';
 
 const LOCAL_BIN = path.join(os.homedir(), '.local', 'bin');
@@ -105,7 +106,7 @@ function writeEnvOnecliUrl(url: string): void {
 // Last-known-good CLI release. Used only if BOTH the upstream installer
 // and the redirect-based version probe fail. Bump deliberately when a
 // new CLI release ships.
-const ONECLI_GATEWAY_VERSION = '1.23.0';
+const ONECLI_GATEWAY_VERSION = '1.24.0';
 const ONECLI_CLI_FALLBACK_VERSION = '1.3.0';
 const ONECLI_CLI_REPO = 'onecli/onecli-cli';
 
@@ -153,8 +154,14 @@ function installOnecli(): { stdout: string; ok: boolean } {
   const cleanup = removeLegacyOnecliContainers();
   if (cleanup) stdout += cleanup + '\n';
 
-  // Gateway install (docker-compose based, no rate-limit concerns).
-  const gw = runInstall(`export ONECLI_VERSION=${ONECLI_GATEWAY_VERSION} && curl -fsSL onecli.sh/install | sh`);
+  // Gateway bring-up. The upstream `curl onecli.sh/install | sh` runs
+  // `docker compose ... up -d --wait`, which podman-compose ≤1.5.0 rejects
+  // (unrecognized arg). Use our shell wrapper instead — it fetches the
+  // compose file via the upstream installer when missing, then runs `up -d`
+  // and polls health itself.
+  const envPath = path.join(process.cwd(), '.env');
+  const script = path.join(process.cwd(), 'setup', 'install-onecli-gateway.sh');
+  const gw = runInstall(`ONECLI_VERSION=${ONECLI_GATEWAY_VERSION} bash ${JSON.stringify(script)} ${JSON.stringify(envPath)}`);
   stdout += gw.stdout;
   if (!gw.ok) {
     log.error('OneCLI gateway install failed', { stderr: gw.stderr });
@@ -390,6 +397,20 @@ export async function run(args: string[]): Promise<void> {
   }
 
   log.info('Installing OneCLI gateway and CLI');
+  if (!process.env.ONECLI_BIND_HOST) {
+    const fromEnvFile = readEnvKey('ONECLI_BIND_HOST');
+    if (fromEnvFile) {
+      process.env.ONECLI_BIND_HOST = fromEnvFile;
+      log.info('Loaded ONECLI_BIND_HOST from .env', { value: fromEnvFile });
+    }
+  }
+  if (!process.env.POSTGRES_PORT) {
+    const fromEnvFile = readEnvKey('POSTGRES_PORT');
+    if (fromEnvFile) {
+      process.env.POSTGRES_PORT = fromEnvFile;
+      log.info('Loaded POSTGRES_PORT from .env', { value: fromEnvFile });
+    }
+  }
   const res = installOnecli();
   if (!res.ok) {
     emitStatus('ONECLI', {

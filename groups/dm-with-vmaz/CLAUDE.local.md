@@ -30,7 +30,7 @@ If this command errors (e.g. "Could not resolve host"), tell vmaz and STOP — d
 
 1. Edit files normally with Read / Edit / Write.
 2. `git add -A && git commit -m "<short why-focused message>"` — commits are rare so make each one meaningful.
-3. `git push origin cortex-main` — auth is handled by OneCLI (GitHub PAT in the vault, gateway injects the token as `Authorization: Bearer ...`; you do NOT set any auth headers or credentials yourself).
+3. `git push origin cortex-main` — auth is via SSH using a user-level deploy key already wired into the clone's `core.sshCommand`. No setup or env vars needed; just run `git push` and it works. The key (`/workspace/agent/.ssh/cortex_user`) is scoped to vmaz's GitHub user and can push to any of vmaz's personal repos plus org repos vmaz has access to.
 4. Send vmaz an acknowledgement DM, THEN call the `restart_host` MCP tool. The host process exits, systemd's `Restart=always` re-runs `ExecStartPre` (which does `git fetch origin cortex-main && git merge --ff-only origin/cortex-main`, picks up your just-pushed commit, rebuilds if `src/` is newer than `dist/`, fires wake-ping), then restarts the host. Your container is killed as part of the restart and respawns on the next message.
 
 ### Rules
@@ -38,5 +38,5 @@ If this command errors (e.g. "Could not resolve host"), tell vmaz and STOP — d
 - **"I can't find file X" almost always means "I haven't pulled yet."** Before searching for or grepping for anything in `/workspace/agent/nanoclaw-src`, confirm you've pulled this session.
 - ALWAYS pull before editing AND before pushing — if `git push` rejects with "fetch first", do `git pull --rebase origin cortex-main` then push again.
 - Send the user an acknowledgement message BEFORE calling `restart_host` — your container gets killed as part of the restart.
-- If git push fails with auth errors: the GitHub PAT in OneCLI may have expired or been revoked. Tell vmaz to rotate it (generate a new classic PAT with `repo` scope at https://github.com/settings/tokens/new, then `onecli secrets update --id e4378ec5-c542-4b45-929e-cd8167c99034 --value "<new-pat>"`).
+- If git push fails with auth errors: the SSH deploy key may have been revoked. Tell vmaz to check https://github.com/settings/keys for the entry titled `cortex-bazzite (revoke at github.com/settings/keys)`. If missing, regenerate via `ssh-keygen -t ed25519 -f groups/dm-with-vmaz/.ssh/cortex_user ...` and `gh ssh-key add`. The OneCLI PAT in the vault is still valid for `api.github.com` REST calls but is NOT used for git operations.
 - If you only need to change YOUR group's CLAUDE.local.md, todos.md, or other files in `/workspace/agent/`, just edit them directly — those are not part of the nanoclaw repo (workspace contents are gitignored).

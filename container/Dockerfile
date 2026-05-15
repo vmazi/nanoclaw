@@ -50,6 +50,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         curl \
         git \
         openssh-client \
+        podman \
         tini \
         unzip \
     && if [ "$INSTALL_CJK_FONTS" = "true" ]; then \
@@ -115,6 +116,13 @@ RUN --mount=type=cache,target=/root/.cache/pnpm \
 # Actual script lives in the mounted source at /app/src/cli/ncl.ts.
 RUN printf '#!/bin/sh\nexec bun /app/src/cli/ncl.ts "$@"\n' > /usr/local/bin/ncl && \
     chmod +x /usr/local/bin/ncl
+
+# ---- docker -> podman shim ---------------------------------------------------
+# Match the host's setup (~/.local/bin/docker -> /usr/bin/podman). Anything in
+# the container that calls `docker ...` actually runs podman against the
+# mounted podman socket. /usr/local/bin precedes /usr/bin in PATH so this
+# wins over any real docker-cli installed via install_packages.
+RUN ln -sf /usr/bin/podman /usr/local/bin/docker
 
 # ---- Entrypoint --------------------------------------------------------------
 COPY entrypoint.sh /app/entrypoint.sh

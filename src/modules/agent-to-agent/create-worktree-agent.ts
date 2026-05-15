@@ -82,10 +82,7 @@ function buildLocalMd(
   return lines.join('\n') + '\n';
 }
 
-export async function handleCreateWorktreeAgent(
-  content: Record<string, unknown>,
-  session: Session,
-): Promise<void> {
+export async function handleCreateWorktreeAgent(content: Record<string, unknown>, session: Session): Promise<void> {
   const requestId = content.requestId as string;
   const branch = content.branch as string;
   const baseRepo = content.baseRepo as string;
@@ -110,8 +107,7 @@ export async function handleCreateWorktreeAgent(
 
   const repoName = path.basename(baseRepo);
   const worktreePath =
-    (content.worktreePath as string | null) ??
-    path.join(path.dirname(baseRepo), `${repoName}-${branchSlug}`);
+    (content.worktreePath as string | null) ?? path.join(path.dirname(baseRepo), `${repoName}-${branchSlug}`);
 
   // Container-relative path (relative to /workspace/extra/)
   const containerRelPath = `${repoName}-${branchSlug}`;

@@ -4,21 +4,10 @@
  * agentic operation after every start-nanoclaw.sh invocation.
  */
 import Database from 'better-sqlite3';
-import { execSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-
-function gitRev(): string {
-  try {
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { encoding: 'utf8' }).trim();
-    const sha = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-    const dirty = execSync('git status --porcelain', { encoding: 'utf8' }).trim() ? '+dirty' : '';
-    return `${branch}@${sha}${dirty}`;
-  } catch {
-    return 'unknown';
-  }
-}
+import { buildWakePingText } from '../src/modules/wake-ping/index.js';
 
 const CORTEX_AG = 'ag-1778779779683-jozrcq';
 const VMAZ_SIGNAL = '+16098199277';
@@ -52,9 +41,8 @@ const { m } = db
   .get() as { m: number };
 const seq = m + 2;
 
-const rev = gitRev();
 const content = JSON.stringify({
-  text: `[wake-ping] You just came online. Send EXACTLY this DM to vmaz on Signal — do NOT try to verify the revision yourself from /app (that's the container, not the host repo); the rev below was captured on the host where the actual nanoclaw repo lives:\n\n<message to="vmaz">🧠\n🟢 Cortex online @ ${new Date().toLocaleTimeString()} — rev ${rev}</message>`,
+  text: buildWakePingText(),
   sender: 'system',
   senderId: 'system',
   senderName: 'System',

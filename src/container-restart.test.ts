@@ -6,6 +6,10 @@ vi.mock('./log.js', () => ({
   log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+vi.mock('./modules/wake-ping/index.js', () => ({
+  buildWakePingText: () => '[wake-ping] test ping',
+}));
+
 const mockIsContainerRunning = vi.fn<(id: string) => boolean>();
 const mockKillContainer = vi.fn<(id: string, reason: string, onExit?: () => void) => void>();
 const mockWakeContainer = vi.fn();
@@ -72,32 +76,41 @@ describe('restartAgentGroupContainers', () => {
 
     expect(count).toBe(1);
     expect(mockKillContainer).toHaveBeenCalledTimes(1);
-    expect(mockKillContainer).toHaveBeenCalledWith('s1', 'test', undefined);
+    // Always passes an onExit callback now (wake-ping is always injected)
+    expect(typeof mockKillContainer.mock.calls[0][2]).toBe('function');
   });
 
-  it('does not write wake message when wakeMessage is omitted', () => {
+  it('always writes a wake-ping on_wake message even without wakeMessage', () => {
     mockGetSessionsByAgentGroup.mockReturnValue([makeSession('s1', 'g1')]);
     mockIsContainerRunning.mockReturnValue(true);
 
     restartAgentGroupContainers('g1', 'test');
 
-    expect(mockWriteSessionMessage).not.toHaveBeenCalled();
-    expect(mockKillContainer).toHaveBeenCalledWith('s1', 'test', undefined);
+    expect(mockWriteSessionMessage).toHaveBeenCalledTimes(1);
+    const [, , msg] = mockWriteSessionMessage.mock.calls[0];
+    expect(msg.onWake).toBe(1);
+    expect(JSON.parse(msg.content).text).toBe('[wake-ping] test ping');
+    // Always passes an onExit callback
+    expect(typeof mockKillContainer.mock.calls[0][2]).toBe('function');
   });
 
-  it('writes on_wake message and passes onExit callback when wakeMessage is provided', () => {
+  it('writes wake-ping then custom on_wake message when wakeMessage is provided', () => {
     mockGetSessionsByAgentGroup.mockReturnValue([makeSession('s1', 'g1')]);
     mockIsContainerRunning.mockReturnValue(true);
 
     restartAgentGroupContainers('g1', 'test', 'Resuming.');
 
-    // Should write an on-wake message
-    expect(mockWriteSessionMessage).toHaveBeenCalledTimes(1);
-    const [agentGroupId, sessionId, msg] = mockWriteSessionMessage.mock.calls[0];
-    expect(agentGroupId).toBe('g1');
-    expect(sessionId).toBe('s1');
-    expect(msg.onWake).toBe(1);
-    expect(JSON.parse(msg.content).text).toBe('Resuming.');
+    // First message is the wake-ping, second is the custom message
+    expect(mockWriteSessionMessage).toHaveBeenCalledTimes(2);
+    const [ag1, sid1, msg1] = mockWriteSessionMessage.mock.calls[0];
+    expect(ag1).toBe('g1');
+    expect(sid1).toBe('s1');
+    expect(msg1.onWake).toBe(1);
+    expect(JSON.parse(msg1.content).text).toBe('[wake-ping] test ping');
+
+    const [, , msg2] = mockWriteSessionMessage.mock.calls[1];
+    expect(msg2.onWake).toBe(1);
+    expect(JSON.parse(msg2.content).text).toBe('Resuming.');
 
     // Should pass an onExit callback to killContainer
     expect(mockKillContainer).toHaveBeenCalledTimes(1);
@@ -134,7 +147,7 @@ describe('restartAgentGroupContainers', () => {
     expect(mockWakeContainer).not.toHaveBeenCalled();
   });
 
-  it('handles multiple running sessions with wake message', () => {
+  it('handles multiple running sessions', () => {
     mockGetSessionsByAgentGroup.mockReturnValue([makeSession('s1', 'g1'), makeSession('s2', 'g1')]);
     mockIsContainerRunning.mockReturnValue(true);
 
@@ -142,10 +155,14 @@ describe('restartAgentGroupContainers', () => {
 
     expect(count).toBe(2);
     expect(mockKillContainer).toHaveBeenCalledTimes(2);
-    expect(mockWriteSessionMessage).toHaveBeenCalledTimes(2);
+    // 2 messages per session (wake-ping + custom)
+    expect(mockWriteSessionMessage).toHaveBeenCalledTimes(4);
 
-    // Each session gets its own on-wake message
+    // s1 gets both messages
     expect(mockWriteSessionMessage.mock.calls[0][1]).toBe('s1');
-    expect(mockWriteSessionMessage.mock.calls[1][1]).toBe('s2');
+    expect(mockWriteSessionMessage.mock.calls[1][1]).toBe('s1');
+    // s2 gets both messages
+    expect(mockWriteSessionMessage.mock.calls[2][1]).toBe('s2');
+    expect(mockWriteSessionMessage.mock.calls[3][1]).toBe('s2');
   });
 });

@@ -317,6 +317,12 @@ export class ClaudeProvider implements AgentProvider {
 
     async function* translateEvents(): AsyncGenerator<ProviderEvent> {
       let messageCount = 0;
+      // Collect text from intermediate assistant turns (those that also contain tool uses).
+      // The SDK only puts the *final* assistant turn's text in the result event, so any
+      // <message> blocks written before the first tool call would be silently dropped
+      // without this accumulation.
+      const intermediateTexts: string[] = [];
+
       for await (const message of sdkResult) {
         if (aborted) return;
         messageCount++;
@@ -324,10 +330,25 @@ export class ClaudeProvider implements AgentProvider {
         // Yield activity for every SDK event so the poll loop knows the agent is working
         yield { type: 'activity' };
 
-        if (message.type === 'system' && message.subtype === 'init') {
+        if (message.type === 'assistant') {
+          // Capture text from intermediate turns — those that include tool uses.
+          // Final-turn text (no tool use) will come through in the result event.
+          type ContentBlock = { type: string; text?: string };
+          const content = ((message as { message?: { content?: ContentBlock[] } }).message?.content) ?? [];
+          const hasToolUse = content.some((b) => b.type === 'tool_use');
+          if (hasToolUse) {
+            const text = content
+              .filter((b): b is { type: 'text'; text: string } => b.type === 'text' && typeof b.text === 'string')
+              .map((b) => b.text)
+              .join('');
+            if (text) intermediateTexts.push(text);
+          }
+        } else if (message.type === 'system' && message.subtype === 'init') {
           yield { type: 'init', continuation: message.session_id };
         } else if (message.type === 'result') {
-          const text = 'result' in message ? (message as { result?: string }).result ?? null : null;
+          const finalText = 'result' in message ? (message as { result?: string }).result ?? null : null;
+          const parts = [...intermediateTexts, ...(finalText ? [finalText] : [])];
+          const text = parts.length > 0 ? parts.join('\n') : null;
           yield { type: 'result', text };
         } else if (message.type === 'system' && (message as { subtype?: string }).subtype === 'api_retry') {
           yield { type: 'error', message: 'API retry', retryable: true };

@@ -36,10 +36,7 @@ export const CONTAINER_RUNTIME_BIN = 'docker';
 export function hostGatewayArgs(): string[] {
   if (os.platform() !== 'linux') return [];
   if (isPodman()) {
-    return [
-      '--network=slirp4netns:allow_host_loopback=true',
-      '--add-host=host.docker.internal:10.0.2.2',
-    ];
+    return ['--network=slirp4netns:allow_host_loopback=true', '--add-host=host.docker.internal:10.0.2.2'];
   }
   return ['--add-host=host.docker.internal:host-gateway'];
 }
@@ -59,10 +56,11 @@ let cachedIsPodman: boolean | undefined;
 export function isPodman(): boolean {
   if (cachedIsPodman !== undefined) return cachedIsPodman;
   try {
-    const out = execSync(
-      `${CONTAINER_RUNTIME_BIN} info --format '{{.Host.BuildahVersion}}'`,
-      { stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf-8', timeout: 5000 },
-    );
+    const out = execSync(`${CONTAINER_RUNTIME_BIN} info --format '{{.Host.BuildahVersion}}'`, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf-8',
+      timeout: 5000,
+    });
     cachedIsPodman = out.trim().length > 0;
   } catch {
     cachedIsPodman = false;

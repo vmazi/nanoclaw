@@ -49,9 +49,7 @@ describe('writableMountArgs', () => {
   it('returns -v flag with :z suffix on Linux, no suffix elsewhere', () => {
     const args = writableMountArgs('/host/path', '/container/path');
     const expected =
-      process.platform === 'linux'
-        ? ['-v', '/host/path:/container/path:z']
-        : ['-v', '/host/path:/container/path'];
+      process.platform === 'linux' ? ['-v', '/host/path:/container/path:z'] : ['-v', '/host/path:/container/path'];
     expect(args).toEqual(expected);
   });
 });

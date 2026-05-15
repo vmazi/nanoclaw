@@ -3,6 +3,7 @@
  * All runtime-specific logic lives here so swapping runtimes means changing one file.
  */
 import { execSync } from 'child_process';
+import fs from 'fs';
 import os from 'os';
 
 import { CONTAINER_INSTALL_LABEL } from './config.js';
@@ -93,22 +94,34 @@ export function userNamespaceArgs(): string[] {
  * On Linux we always append `z` so podman/docker relabel the host directory
  * for SELinux. The flag is a no-op on Docker daemons without SELinux support
  * and on non-Linux platforms, so we only emit it on Linux.
+ *
+ * Socket files are excluded from `:z` relabeling — the relabel changes the
+ * SELinux type to container_file_t which blocks container_t from connecting.
+ * Sockets should be pre-labeled with container_runtime_t on the host instead.
  */
-function mountOptionSuffix(readonly: boolean): string {
+function mountOptionSuffix(readonly: boolean, skipSelinuxLabel = false): string {
   const opts: string[] = [];
   if (readonly) opts.push('ro');
-  if (os.platform() === 'linux') opts.push('z');
+  if (os.platform() === 'linux' && !skipSelinuxLabel) opts.push('z');
   return opts.length > 0 ? `:${opts.join(',')}` : '';
+}
+
+function isSocketFile(hostPath: string): boolean {
+  try {
+    return fs.statSync(hostPath).isSocket();
+  } catch {
+    return false;
+  }
 }
 
 /** Returns CLI args for a readonly bind mount. */
 export function readonlyMountArgs(hostPath: string, containerPath: string): string[] {
-  return ['-v', `${hostPath}:${containerPath}${mountOptionSuffix(true)}`];
+  return ['-v', `${hostPath}:${containerPath}${mountOptionSuffix(true, isSocketFile(hostPath))}`];
 }
 
 /** Returns CLI args for a writable bind mount. */
 export function writableMountArgs(hostPath: string, containerPath: string): string[] {
-  return ['-v', `${hostPath}:${containerPath}${mountOptionSuffix(false)}`];
+  return ['-v', `${hostPath}:${containerPath}${mountOptionSuffix(false, isSocketFile(hostPath))}`];
 }
 
 /** Stop a container by name. Uses execFileSync to avoid shell injection. */

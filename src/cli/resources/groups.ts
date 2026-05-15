@@ -303,17 +303,23 @@ registerResource({
         const containerPath = (args['container-path'] ?? args.container_path) as string | undefined;
         const readonly = args.readonly === true || args.readonly === 'true';
 
-        const mount: AdditionalMountConfig = { hostPath, containerPath: containerPath ?? path.basename(hostPath), readonly };
+        const mount: AdditionalMountConfig = {
+          hostPath,
+          containerPath: containerPath ?? path.basename(hostPath),
+          readonly,
+        };
         existing.push(mount);
         updateContainerConfigJson(id, 'additional_mounts', existing);
 
-        return { added: mount, note: 'Restart required for mount to take effect. Path will be at /workspace/extra/' + mount.containerPath };
+        return {
+          added: mount,
+          note: 'Restart required for mount to take effect. Path will be at /workspace/extra/' + mount.containerPath,
+        };
       },
     },
     'config remove-mount': {
       access: 'approval',
-      description:
-        'Remove an additional mount from a group. Use --id <group-id> --host-path <path>.',
+      description: 'Remove an additional mount from a group. Use --id <group-id> --host-path <path>.',
       handler: async (args) => {
         const id = args.id as string;
         if (!id) throw new Error('--id is required');

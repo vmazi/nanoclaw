@@ -59,7 +59,7 @@ registerDeliveryAction('host_run', async (content, session) => {
   if (wouldKillHostProcess(command)) {
     notifyAgent(
       session,
-      '[host_run] refused: command would terminate the nanoclaw host process before this request can be acknowledged, which causes an infinite replay loop on respawn. To restart your container, use `ncl groups restart` from inside the container (see CLAUDE.md → Container Restart). If you genuinely need the host service restarted, ask vmaz to do it manually.',
+      '[host_run] refused: command would terminate the nanoclaw host process before this request can be acknowledged, which causes an infinite replay loop on respawn. Use the `restart_host` MCP tool instead — it acks delivery before exiting, and systemd picks the host back up. To restart just your own container (no host bounce), use `ncl groups restart` from inside the container.',
     );
     return;
   }

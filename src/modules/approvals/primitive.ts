@@ -196,6 +196,13 @@ export async function requestApproval(opts: RequestApprovalOptions): Promise<voi
   const adapter = getDeliveryAdapter();
   if (adapter) {
     try {
+      // Send a single payload that has BOTH the chat-sdk structure (for
+      // platforms with native buttons — Slack, Discord, Telegram, etc.) AND
+      // a `text` field so platforms that read only `content.text` (Signal
+      // and other native adapters) get a plain-text fallback. The text-reply
+      // interceptor in this module catches `approve`/`deny` replies on those
+      // channels and dispatches as if a button had been clicked.
+      const textFallback = `🔔 ${title}\n\n${question}\n\nReply \`approve\` or \`deny\`.`;
       await adapter.deliver(
         target.messagingGroup.channel_type,
         target.messagingGroup.platform_id,
@@ -207,6 +214,7 @@ export async function requestApproval(opts: RequestApprovalOptions): Promise<voi
           title,
           question,
           options: APPROVAL_OPTIONS,
+          text: textFallback,
         }),
       );
     } catch (err) {

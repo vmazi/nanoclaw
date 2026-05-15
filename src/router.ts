@@ -116,10 +116,17 @@ export function setSenderScopeGate(fn: SenderScopeGateFn): void {
  */
 export type MessageInterceptorFn = (event: InboundEvent) => Promise<boolean>;
 
-let messageInterceptor: MessageInterceptorFn | null = null;
+const messageInterceptors: MessageInterceptorFn[] = [];
 
+/**
+ * Register an interceptor. Multiple interceptors can be registered; each is
+ * tried in registration order and the first to return `true` (claimed)
+ * stops the chain. Existing single-slot semantics are preserved — calling
+ * this once still works the same way; calling it again now adds rather
+ * than replaces.
+ */
 export function setMessageInterceptor(fn: MessageInterceptorFn): void {
-  messageInterceptor = fn;
+  messageInterceptors.push(fn);
 }
 
 /**
@@ -156,9 +163,12 @@ function safeParseContent(raw: string): { text?: string; sender?: string; sender
  * Creates messaging group + session if they don't exist yet.
  */
 export async function routeInbound(event: InboundEvent): Promise<void> {
-  // Pre-route interceptor — lets modules consume messages before any routing
-  // (e.g. free-text replies during multi-step approval flows).
-  if (messageInterceptor && (await messageInterceptor(event))) return;
+  // Pre-route interceptors — let modules consume messages before any routing
+  // (e.g. free-text replies during multi-step approval flows, or text-fallback
+  // approve/deny on channels without chat-sdk buttons). First claim wins.
+  for (const intercept of messageInterceptors) {
+    if (await intercept(event)) return;
+  }
 
   // 0. Apply the adapter's thread policy. Non-threaded adapters (Telegram,
   //    WhatsApp, iMessage, email) collapse threads to the channel.

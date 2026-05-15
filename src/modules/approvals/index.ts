@@ -27,6 +27,9 @@ export type { ApprovalHandler, ApprovalHandlerContext, RequestApprovalOptions } 
 
 registerResponseHandler(handleApprovalsResponse);
 
+// Text-fallback interceptor for channels without chat-sdk buttons (Signal etc.)
+import './text-reply.js';
+
 onDeliveryAdapterReady((adapter) => {
   startOneCLIApprovalHandler(adapter);
 });

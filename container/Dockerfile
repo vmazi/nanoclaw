@@ -51,6 +51,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         git \
         openssh-client \
         podman \
+        podman-compose \
         tini \
         unzip \
     && if [ "$INSTALL_CJK_FONTS" = "true" ]; then \

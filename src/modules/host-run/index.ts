@@ -7,9 +7,10 @@
  * (registered on the same `host_run` action) does the actual child_process
  * spawn after the admin approves, and notifies the agent with the result.
  *
- * Allowlist: only image/compose builds are accepted today —
- *   `podman build`, `docker build`, `podman compose build|run`,
- *   `docker compose build|run`
+ * Allowlist: image builds and compose service management —
+ *   `podman build`, `docker build`,
+ *   `podman compose build|run|up|down|start|stop|restart|ps`,
+ *   `docker compose build|run|up|down|start|stop|restart|ps`
  * optionally prefixed with a single `cd <abs-path> && `. No shell chaining.
  * Other host operations should grow dedicated MCP tools rather than ride
  * on host_run.
@@ -42,7 +43,7 @@ const SELF_KILL_PATTERN =
 
 // Top-level verbs the agent is permitted to invoke through host_run.
 const ALLOWED_VERB =
-  /^(podman\s+build|docker\s+build|podman\s+compose\s+(build|run)|docker\s+compose\s+(build|run))(\s|$)/i;
+  /^(podman\s+build|docker\s+build|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps))(\s|$)/i;
 
 // Shell control operators that could chain another command after the
 // allowed verb. A single `cd <abs> && ` prefix is stripped before this
@@ -90,7 +91,7 @@ registerDeliveryAction('host_run', async (content, session) => {
   if (!isAllowedHostCommand(command)) {
     notifyAgent(
       session,
-      '[host_run] refused: only image/compose builds are allowed. Permitted (optionally prefixed with `cd <abs-path> &&`):\n  • podman build ...\n  • docker build ...\n  • podman compose build|run ...\n  • docker compose build|run ...\nNo shell chaining (`;`, `&&` other than the cd prefix, `||`, `|`, backticks, `$(...)`).',
+      '[host_run] refused: command not in allowlist. Permitted (optionally prefixed with `cd <abs-path> &&`):\n  • podman build ...\n  • docker build ...\n  • podman compose build|run|up|down|start|stop|restart|ps ...\n  • docker compose build|run|up|down|start|stop|restart|ps ...\nNo shell chaining (`;`, `&&` other than the cd prefix, `||`, `|`, backticks, `$(...)`).',
     );
     return;
   }

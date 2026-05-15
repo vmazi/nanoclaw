@@ -40,11 +40,18 @@ describe('isAllowedHostCommand', () => {
     expect(isAllowedHostCommand('docker build -f Dockerfile.prod -t app .')).toBe(true);
   });
 
-  it('allows podman/docker compose build and run', () => {
+  it('allows podman/docker compose build, run, and service management', () => {
     expect(isAllowedHostCommand('podman compose build')).toBe(true);
     expect(isAllowedHostCommand('docker compose build admin-ui')).toBe(true);
     expect(isAllowedHostCommand('podman compose run --rm migrate')).toBe(true);
     expect(isAllowedHostCommand('docker compose run service /bin/sh -c "echo hi"')).toBe(true);
+    expect(isAllowedHostCommand('podman compose up automagica-landing')).toBe(true);
+    expect(isAllowedHostCommand('podman compose up -d automagica-landing')).toBe(true);
+    expect(isAllowedHostCommand('docker compose up')).toBe(true);
+    expect(isAllowedHostCommand('podman compose down')).toBe(true);
+    expect(isAllowedHostCommand('podman compose stop automagica-landing')).toBe(true);
+    expect(isAllowedHostCommand('podman compose restart automagica-mcp')).toBe(true);
+    expect(isAllowedHostCommand('podman compose ps')).toBe(true);
   });
 
   it('allows a leading `cd <abs-path> &&` prefix', () => {

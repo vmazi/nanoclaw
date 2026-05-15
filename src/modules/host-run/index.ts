@@ -31,6 +31,17 @@ const DEFAULT_TIMEOUT_S = 600;
 const MAX_TIMEOUT_S = 1800;
 const MAX_OUTPUT_BYTES = 8192;
 
+// Commands that would terminate the host process before this handler can
+// markDelivered() the outbound row. Without this guard, the row stays
+// pending, the host respawns, replays the same command, and the loop never
+// drains.
+const SELF_KILL_PATTERN =
+  /\b(systemctl(\s+--user)?\s+(restart|stop|reload|kill)\s+\S*nanoclaw|launchctl\s+(unload|stop|kickstart)[^\n]*com\.nanoclaw|pkill[^\n]*nanoclaw)\b/i;
+
+export function wouldKillHostProcess(command: string): boolean {
+  return SELF_KILL_PATTERN.test(command);
+}
+
 function truncate(buf: string, label: string): string {
   if (buf.length <= MAX_OUTPUT_BYTES) return buf;
   const head = buf.slice(0, MAX_OUTPUT_BYTES / 2);
@@ -42,6 +53,14 @@ registerDeliveryAction('host_run', async (content, session) => {
   const command = (content.command as string)?.trim();
   if (!command) {
     notifyAgent(session, '[host_run] failed: empty command');
+    return;
+  }
+
+  if (wouldKillHostProcess(command)) {
+    notifyAgent(
+      session,
+      '[host_run] refused: command would terminate the nanoclaw host process before this request can be acknowledged, which causes an infinite replay loop on respawn. To restart your container, use `ncl groups restart` from inside the container (see CLAUDE.md → Container Restart). If you genuinely need the host service restarted, ask vmaz to do it manually.',
+    );
     return;
   }
 

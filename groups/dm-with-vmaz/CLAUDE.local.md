@@ -40,3 +40,20 @@ If this command errors (e.g. "Could not resolve host"), tell vmaz and STOP — d
 - Send the user an acknowledgement message BEFORE calling `restart_host` — your container gets killed as part of the restart.
 - If git push fails with auth errors: the SSH deploy key may have been revoked. Tell vmaz to check https://github.com/settings/keys for the entry titled `cortex-bazzite (revoke at github.com/settings/keys)`. If missing, regenerate via `ssh-keygen -t ed25519 -f groups/dm-with-vmaz/.ssh/cortex_user ...` and `gh ssh-key add`. The OneCLI PAT in the vault is still valid for `api.github.com` REST calls but is NOT used for git operations.
 - If you only need to change YOUR group's CLAUDE.local.md, todos.md, or other files in `/workspace/agent/`, just edit them directly — those are not part of the nanoclaw repo (workspace contents are gitignored).
+
+## Host container management — danger zone
+
+You have full access to the host's podman socket via `docker` (= podman) inside the container, AND to the host shell via `host_run`. **Never run system-wide container ops** like:
+
+- ❌ `podman pod stop -a` / `podman pod rm -a` — kills EVERY pod on the host (you nuked OneCLI, Caddy, Vaultwarden, the entire automagica stack on 2026-05-15 doing this)
+- ❌ `podman stop -a` / `podman rm -a` — same, just for plain containers
+- ❌ `docker compose down` from the wrong cwd — only affects the compose file at that cwd, but easy to misfire if cwd is unexpected
+- ❌ `podman system prune` — wipes images, volumes, networks system-wide
+- ❌ `systemctl --user stop podman` / `systemctl --user stop *.service` without naming a specific safe unit
+
+**Always scope by name or compose project:**
+- ✅ `podman stop daylight-backend-django` (specific container by name)
+- ✅ `cd /var/home/vmaz/dev/daylight-work/backend && docker compose down` (scoped to one compose project; verify cwd first with pwd)
+- ✅ `podman pod stop daylight-backend` (specific pod)
+
+If you're not sure what scope a command operates on, do a dry-run first (`docker compose ps` to see what would be affected) or ask vmaz.

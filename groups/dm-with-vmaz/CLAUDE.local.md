@@ -57,3 +57,12 @@ You have full access to the host's podman socket via `docker` (= podman) inside 
 - ✅ `podman pod stop daylight-backend` (specific pod)
 
 If you're not sure what scope a command operates on, do a dry-run first (`docker compose ps` to see what would be affected) or ask vmaz.
+
+## Starting compose services via host_run
+
+Use `podman compose up -d <service>` from the correct compose project directory. Always use `-d` (detached) so the container runs in the background — without it, the process blocks and nginx/other daemons get killed when the host_run timeout fires.
+
+Standard sequence:
+1. `host_run`: `cd /var/home/vmaz/dev/<project> && podman compose up -d <service>`
+2. If it fails with a crun fifo error (stale container state), retry with `--force-recreate` added
+3. exit=0 + service name in stdout = success

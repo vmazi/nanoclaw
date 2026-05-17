@@ -633,7 +633,8 @@ export function createSignalAdapter(config: {
       if (!saveDir || !existsSync(sourcePath)) return sourcePath;
       mkdirSync(saveDir, { recursive: true });
       const ext = filename ? extname(filename) || mimeToExt(contentType ?? '') : mimeToExt(contentType ?? '');
-      const destName = `${Date.now()}-${id}${ext}`;
+      const idBase = extname(id) ? id.slice(0, id.lastIndexOf('.')) : id;
+      const destName = `${Date.now()}-${idBase}${ext}`;
       const destPath = join(saveDir, destName);
       copyFileSync(sourcePath, destPath);
       if (config.attachmentContainerPath) return join(config.attachmentContainerPath, destName);

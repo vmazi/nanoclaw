@@ -557,6 +557,10 @@ export function createSignalAdapter(config: {
   let connected = false;
   const echoCache = new EchoCache();
   let setup: ChannelSetup | null = null;
+  // Maps sent Signal message timestamp → approval ID.
+  // Populated when an approval card is delivered; matched against incoming
+  // 👍/👎 reactions to dispatch the approval without a text reply.
+  const pendingApprovalTimestamps = new Map<number, string>();
 
   // -- inbound handling --
 
@@ -610,6 +614,45 @@ export function createSignalAdapter(config: {
 
     const dataMessage = envelope.dataMessage;
     if (!dataMessage) return;
+
+    // Emoji reactions → approval dispatch
+    const reactionData = (dataMessage as any).reaction as
+      | { emoji?: string; isRemove?: boolean; targetSentTimestamp?: number }
+      | undefined;
+    if (reactionData) {
+      if (!reactionData.isRemove && (reactionData.emoji === '👍' || reactionData.emoji === '👎')) {
+        const reactSender = (envelope.sourceNumber ?? envelope.sourceUuid ?? (envelope as any).source ?? '').trim();
+        if (reactSender) {
+          const targetTs =
+            typeof reactionData.targetSentTimestamp === 'number' ? reactionData.targetSentTimestamp : null;
+          const approvalId = targetTs !== null ? pendingApprovalTimestamps.get(targetTs) : null;
+          if (approvalId) {
+            const rGroupId = dataMessage.groupV2?.id ?? dataMessage.groupInfo?.groupId;
+            const rPlatformId = rGroupId ? `group:${rGroupId}` : reactSender;
+            const voteText = reactionData.emoji === '👍' ? 'approve' : 'deny';
+            log.info('Signal: emoji approval reaction', {
+              approvalId,
+              vote: voteText,
+              sender: reactSender,
+            });
+            setup.onMetadata(rPlatformId, reactSender, !!rGroupId);
+            await setup.onInbound(rPlatformId, null, {
+              id: `rxn-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+              kind: 'chat',
+              timestamp: new Date().toISOString(),
+              content: {
+                text: voteText,
+                sender: reactSender,
+                senderId: `signal:${reactSender}`,
+                senderName: reactSender,
+                isFromMe: false,
+              },
+            });
+          }
+        }
+      }
+      return; // Never route reactions as regular messages
+    }
 
     const rawText = (dataMessage.message ?? '').trim();
     const text = rawText ? resolveMentions(rawText, dataMessage.mentions) : '';
@@ -755,13 +798,15 @@ export function createSignalAdapter(config: {
 
   // -- send helpers --
 
-  async function sendText(platformId: string, text: string): Promise<void> {
-    if (!connected || !tcp) return;
+  async function sendText(platformId: string, text: string): Promise<number | null> {
+    if (!connected || !tcp) return null;
 
     echoCache.remember(platformId, text);
 
     const MAX_CHUNK = 4000;
     const chunks = text.length <= MAX_CHUNK ? [text] : chunkText(text, MAX_CHUNK);
+
+    let sentTimestamp: number | null = null;
 
     for (const chunk of chunks) {
       try {
@@ -778,17 +823,21 @@ export function createSignalAdapter(config: {
           params.recipient = [platformId];
         }
 
+        let result: { timestamp?: number } | undefined;
         try {
-          await tcp.rpc('send', params);
+          result = await tcp.rpc<{ timestamp?: number }>('send', params);
         } catch (styledErr) {
           if (textStyles.length > 0) {
             log.debug('Signal: textStyle rejected, retrying with markup');
             delete params.textStyle;
             params.message = chunk;
-            await tcp.rpc('send', params);
+            result = await tcp.rpc<{ timestamp?: number }>('send', params);
           } else {
             throw styledErr;
           }
+        }
+        if (result?.timestamp != null && sentTimestamp === null) {
+          sentTimestamp = result.timestamp;
         }
       } catch (err) {
         log.error('Signal: send failed', { platformId, err });
@@ -796,6 +845,7 @@ export function createSignalAdapter(config: {
     }
 
     log.info('Signal message sent', { platformId, length: text.length });
+    return sentTimestamp;
   }
 
   /**
@@ -948,10 +998,14 @@ export function createSignalAdapter(config: {
     async deliver(platformId: string, _threadId: string | null, message: OutboundMessage): Promise<string | undefined> {
       const content = message.content as Record<string, unknown> | string | undefined;
       let text: string | null = null;
+      let approvalId: string | null = null;
       if (typeof content === 'string') {
         text = content;
-      } else if (content && typeof content === 'object' && typeof content.text === 'string') {
-        text = content.text;
+      } else if (content && typeof content === 'object') {
+        if (typeof content.text === 'string') text = content.text;
+        if (content.type === 'ask_question' && typeof content.questionId === 'string') {
+          approvalId = content.questionId;
+        }
       }
 
       const files = message.files ?? [];
@@ -959,7 +1013,15 @@ export function createSignalAdapter(config: {
       // Send accompanying text first so it lands above the attachment(s) in
       // the recipient's chat. Both branches no-op cleanly if their input is
       // empty, so any combination of (text, files) works.
-      if (text) await sendText(platformId, text);
+      const sentTimestamp = text ? await sendText(platformId, text) : null;
+
+      // Store the sent timestamp so we can match a 👍/👎 reaction back to
+      // this approval request (expires after 1 hour to avoid unbounded growth).
+      if (approvalId && sentTimestamp != null) {
+        pendingApprovalTimestamps.set(sentTimestamp, approvalId);
+        setTimeout(() => pendingApprovalTimestamps.delete(sentTimestamp), 60 * 60 * 1000);
+      }
+
       if (files.length > 0) await sendAttachments(platformId, files);
       return undefined;
     },

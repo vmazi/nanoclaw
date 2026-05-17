@@ -202,7 +202,7 @@ export async function requestApproval(opts: RequestApprovalOptions): Promise<voi
       // and other native adapters) get a plain-text fallback. The text-reply
       // interceptor in this module catches `approve`/`deny` replies on those
       // channels and dispatches as if a button had been clicked.
-      const textFallback = `🔔 ${title}\n\n${question}\n\nReply \`approve\` or \`deny\`.`;
+      const textFallback = `🔔 ${title}\n\n${question}\n\nReact 👍 to approve or 👎 to reject. (Or reply \`approve\` / \`deny\`.)`;
       await adapter.deliver(
         target.messagingGroup.channel_type,
         target.messagingGroup.platform_id,

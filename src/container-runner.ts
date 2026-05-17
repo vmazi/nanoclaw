@@ -516,10 +516,7 @@ async function buildContainerArgs(
  *
  * Exported for testing.
  */
-export async function ensureImageBuilt(
-  agentGroupId: string,
-  perGroupImageTag: string | undefined,
-): Promise<void> {
+export async function ensureImageBuilt(agentGroupId: string, perGroupImageTag: string | undefined): Promise<void> {
   const target = perGroupImageTag || CONTAINER_IMAGE;
   if (imageExists(target)) return;
 

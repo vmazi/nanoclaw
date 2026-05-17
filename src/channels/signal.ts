@@ -996,6 +996,8 @@ registerChannelAdapter('signal', {
       'SIGNAL_CLI_PATH',
       'SIGNAL_MANAGE_DAEMON',
       'SIGNAL_DATA_DIR',
+      'SIGNAL_ATTACHMENT_SAVE_DIR',
+      'SIGNAL_ATTACHMENT_CONTAINER_PATH',
     ]);
 
     const account = process.env.SIGNAL_ACCOUNT || envVars.SIGNAL_ACCOUNT || '';

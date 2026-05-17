@@ -8,10 +8,10 @@
  * Ported from v1 — see v1 source for commit history.
  */
 import { execFileSync, execSync, spawn } from 'node:child_process';
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createConnection, type Socket } from 'node:net';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { extname, join } from 'node:path';
 
 import type { ChannelAdapter, ChannelSetup, InboundMessage, OutboundMessage } from './adapter.js';
 import { registerChannelAdapter } from './channel-registry.js';
@@ -518,6 +518,30 @@ function parseSignalStyles(input: string): StyledText {
  * channelType is always "signal". The router combines channelType + platformId
  * to look up or create the messaging_group.
  */
+// Map common MIME types to file extensions for files that arrive without a filename.
+function mimeToExt(contentType: string): string {
+  const map: Record<string, string> = {
+    'application/pdf': '.pdf',
+    'application/zip': '.zip',
+    'application/x-zip-compressed': '.zip',
+    'application/gzip': '.gz',
+    'application/x-tar': '.tar',
+    'application/msword': '.doc',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+    'application/vnd.ms-excel': '.xls',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': '.xlsx',
+    'application/vnd.ms-powerpoint': '.ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': '.pptx',
+    'text/plain': '.txt',
+    'text/csv': '.csv',
+    'application/json': '.json',
+    'video/mp4': '.mp4',
+    'video/quicktime': '.mov',
+    'video/webm': '.webm',
+  };
+  return map[contentType] ?? '';
+}
+
 export function createSignalAdapter(config: {
   cliPath: string;
   account: string;
@@ -525,6 +549,8 @@ export function createSignalAdapter(config: {
   tcpPort: number;
   manageDaemon: boolean;
   signalDataDir: string;
+  attachmentSaveDir?: string | null;
+  attachmentContainerPath?: string | null;
 }): ChannelAdapter {
   let daemon: DaemonHandle | null = null;
   let tcp: SignalTcpClient | null = null;
@@ -590,9 +616,29 @@ export function createSignalAdapter(config: {
 
     const audioAttachment = dataMessage.attachments?.find((a) => a.contentType?.startsWith('audio/') && a.id);
     const imageAttachments = dataMessage.attachments?.filter((a) => a.contentType?.startsWith('image/') && a.id) ?? [];
+    const fileAttachments =
+      dataMessage.attachments?.filter(
+        (a) => a.id && !a.contentType?.startsWith('audio/') && !a.contentType?.startsWith('image/'),
+      ) ?? [];
     const hasVoice = !text && !!audioAttachment;
 
-    if (!text && !hasVoice && imageAttachments.length === 0) return;
+    if (!text && !hasVoice && imageAttachments.length === 0 && fileAttachments.length === 0) return;
+
+    // Copies an attachment from the signal-cli store to the configured save dir
+    // and returns the path the agent should use (container-side path if configured,
+    // otherwise the host-side destination path).
+    const saveAttachment = (id: string, filename?: string, contentType?: string): string => {
+      const sourcePath = join(config.signalDataDir, 'attachments', id);
+      const saveDir = config.attachmentSaveDir;
+      if (!saveDir || !existsSync(sourcePath)) return sourcePath;
+      mkdirSync(saveDir, { recursive: true });
+      const ext = filename ? extname(filename) || mimeToExt(contentType ?? '') : mimeToExt(contentType ?? '');
+      const destName = `${Date.now()}-${id}${ext}`;
+      const destPath = join(saveDir, destName);
+      copyFileSync(sourcePath, destPath);
+      if (config.attachmentContainerPath) return join(config.attachmentContainerPath, destName);
+      return destPath;
+    };
 
     const sender = (envelope.sourceNumber ?? envelope.sourceUuid ?? envelope.source ?? '').trim();
     if (!sender) return;
@@ -647,16 +693,23 @@ export function createSignalAdapter(config: {
       }
     }
 
-    // Image attachments — emit `[Image: <path>]` lines so the agent's Read
-    // tool can pick them up, and surface the structured `attachments` array
-    // for consumers that prefer that shape. Without this, vision-capable
-    // models never see images sent over Signal.
+    // Image attachments — copy to save dir (if configured) so the container
+    // can reach them, then emit `[Image: <path>]` lines for the Read tool.
     const attachmentRefs: Array<{ path: string; contentType: string }> = [];
     for (const img of imageAttachments) {
-      const imagePath = join(config.signalDataDir, 'attachments', img.id!);
+      const imagePath = saveAttachment(img.id!, img.filename, img.contentType);
       const imageLine = `[Image: ${imagePath}]`;
       content = content ? `${content}\n${imageLine}` : imageLine;
       attachmentRefs.push({ path: imagePath, contentType: img.contentType || 'image/jpeg' });
+    }
+
+    // General file attachments (PDFs, zips, docs, videos, etc.)
+    for (const file of fileAttachments) {
+      const filePath = saveAttachment(file.id!, file.filename, file.contentType);
+      const label = file.filename ? `${file.filename} (${file.contentType ?? 'file'})` : (file.contentType ?? 'file');
+      const fileLine = `[File: ${filePath}] — ${label}`;
+      content = content ? `${content}\n${fileLine}` : fileLine;
+      attachmentRefs.push({ path: filePath, contentType: file.contentType || 'application/octet-stream' });
     }
 
     const msg: InboundMessage = {
@@ -971,6 +1024,10 @@ registerChannelAdapter('signal', {
       }
     }
 
+    const attachmentSaveDir = process.env.SIGNAL_ATTACHMENT_SAVE_DIR || envVars.SIGNAL_ATTACHMENT_SAVE_DIR || null;
+    const attachmentContainerPath =
+      process.env.SIGNAL_ATTACHMENT_CONTAINER_PATH || envVars.SIGNAL_ATTACHMENT_CONTAINER_PATH || null;
+
     return createSignalAdapter({
       cliPath,
       account,
@@ -978,6 +1035,8 @@ registerChannelAdapter('signal', {
       tcpPort,
       manageDaemon,
       signalDataDir,
+      attachmentSaveDir,
+      attachmentContainerPath,
     });
   },
 });

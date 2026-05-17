@@ -24,6 +24,7 @@ import {
   stopContainer,
   ensureContainerRuntimeRunning,
   cleanupOrphans,
+  imageExists,
 } from './container-runtime.js';
 import { CONTAINER_INSTALL_LABEL } from './config.js';
 import { log } from './log.js';
@@ -66,6 +67,31 @@ describe('stopContainer', () => {
     expect(() => stopContainer('foo; rm -rf /')).toThrow('Invalid container name');
     expect(() => stopContainer('foo$(whoami)')).toThrow('Invalid container name');
     expect(() => stopContainer('foo`id`')).toThrow('Invalid container name');
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('imageExists', () => {
+  it('returns true when image inspect exits 0', () => {
+    mockExecSync.mockReturnValueOnce('sha256:abc\n');
+    expect(imageExists('nanoclaw-agent-v2-b35848cc:latest')).toBe(true);
+    expect(mockExecSync).toHaveBeenCalledWith(
+      `${CONTAINER_RUNTIME_BIN} image inspect nanoclaw-agent-v2-b35848cc:latest --format '{{.Id}}'`,
+      expect.objectContaining({ stdio: 'pipe' }),
+    );
+  });
+
+  it('returns false when image inspect throws (image not found)', () => {
+    mockExecSync.mockImplementationOnce(() => {
+      throw new Error('no such image');
+    });
+    expect(imageExists('nanoclaw-agent-v2-b35848cc:missing')).toBe(false);
+  });
+
+  it('rejects tags with shell metacharacters', () => {
+    expect(() => imageExists('foo; rm -rf /')).toThrow('Invalid image tag');
+    expect(() => imageExists('foo$(whoami)')).toThrow('Invalid image tag');
+    expect(() => imageExists('foo`id`')).toThrow('Invalid image tag');
     expect(mockExecSync).not.toHaveBeenCalled();
   });
 });

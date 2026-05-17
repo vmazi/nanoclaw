@@ -132,6 +132,26 @@ export function stopContainer(name: string): void {
   execSync(`${CONTAINER_RUNTIME_BIN} stop -t 1 ${name}`, { stdio: 'pipe' });
 }
 
+/**
+ * True if the image tag exists in local image storage. Does NOT consult any
+ * registry — purely a local lookup. Both docker and podman accept
+ * `image inspect <tag>`; exit 0 if present, non-zero if not.
+ */
+export function imageExists(tag: string): boolean {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._\-:/]*$/.test(tag)) {
+    throw new Error(`Invalid image tag: ${tag}`);
+  }
+  try {
+    execSync(`${CONTAINER_RUNTIME_BIN} image inspect ${tag} --format '{{.Id}}'`, {
+      stdio: 'pipe',
+      timeout: 5000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Ensure the container runtime is running, starting it if needed. */
 export function ensureContainerRuntimeRunning(): void {
   try {

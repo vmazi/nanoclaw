@@ -25,6 +25,7 @@ import { updateContainerConfigScalars, updateContainerConfigJson } from './db/co
 import {
   CONTAINER_RUNTIME_BIN,
   hostGatewayArgs,
+  imageExists,
   readonlyMountArgs,
   stopContainer,
   userNamespaceArgs,
@@ -133,6 +134,14 @@ async function spawnContainer(session: Session): Promise<void> {
   // the config object, threaded through provider resolution, buildMounts,
   // and buildContainerArgs so we don't re-read.
   const containerConfig = materializeContainerJson(agentGroup.id);
+
+  // Verify the image still exists before any further setup work. `podman
+  // system prune` is a real failure mode and the resulting `podman run`
+  // exit 125 is opaque to the host (with short-name-mode=enforcing it
+  // surfaces as a misleading "short-name resolution" pull error). Rebuild
+  // on demand so a prune is invisible — at the cost of a 5–15min stall
+  // on the first affected wake.
+  await ensureImageBuilt(agentGroup.id, containerConfig.imageTag);
 
   // Resolve the effective provider + any host-side contribution it declares
   // (extra mounts, env passthrough). Computed once and threaded through both
@@ -494,6 +503,49 @@ async function buildContainerArgs(
   args.push('-c', 'exec bun run /app/src/index.ts');
 
   return args;
+}
+
+/**
+ * Make sure the image we're about to `run` exists locally. If the per-group
+ * tag is missing, rebuild it (and the base first if that's also missing).
+ *
+ * Why: nanoclaw never pulls — every image is built on this host. A `podman
+ * system prune` will silently break spawning until something rebuilds.
+ * Recovering here is preferable to leaving the host in a fail-loop the
+ * user has to diagnose manually.
+ *
+ * Exported for testing.
+ */
+export async function ensureImageBuilt(
+  agentGroupId: string,
+  perGroupImageTag: string | undefined,
+): Promise<void> {
+  const target = perGroupImageTag || CONTAINER_IMAGE;
+  if (imageExists(target)) return;
+
+  log.warn('Agent image missing — rebuilding', { imageTag: target });
+
+  if (!imageExists(CONTAINER_IMAGE)) {
+    log.warn('Base image missing — rebuilding from container/build.sh', {
+      baseImage: CONTAINER_IMAGE,
+    });
+    buildBaseImage();
+  }
+
+  if (target !== CONTAINER_IMAGE) {
+    await buildAgentGroupImage(agentGroupId);
+  }
+}
+
+/** Run container/build.sh under the active runtime. Blocking, can take 5–15min. */
+function buildBaseImage(): void {
+  const buildScript = path.join(process.cwd(), 'container', 'build.sh');
+  execSync(`bash ${buildScript}`, {
+    cwd: process.cwd(),
+    env: { ...process.env, CONTAINER_RUNTIME: CONTAINER_RUNTIME_BIN },
+    stdio: 'pipe',
+    timeout: 1_200_000,
+  });
 }
 
 /** Build a per-agent-group Docker image with custom packages. */

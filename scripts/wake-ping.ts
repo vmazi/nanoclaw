@@ -7,7 +7,7 @@ import Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildWakePingText } from '../src/modules/wake-ping/index.js';
+import { buildWakePingText, postStartupPingToStoat } from '../src/modules/wake-ping/index.js';
 
 const CORTEX_AG = 'ag-1778779779683-jozrcq';
 const VMAZ_SIGNAL = '+16098199277';
@@ -36,9 +36,9 @@ if (!existsSync(inbound)) {
 
 const db = new Database(inbound);
 
-const { m } = db
-  .prepare('SELECT COALESCE(MAX(seq), -2) AS m FROM messages_in WHERE seq % 2 = 0')
-  .get() as { m: number };
+const { m } = db.prepare('SELECT COALESCE(MAX(seq), -2) AS m FROM messages_in WHERE seq % 2 = 0').get() as {
+  m: number;
+};
 const seq = m + 2;
 
 const content = JSON.stringify({
@@ -56,3 +56,6 @@ db.prepare(
 ).run(randomUUID(), seq, new Date().toISOString(), VMAZ_SIGNAL, content);
 
 console.error(`wake-ping injected seq=${seq} into ${inbound}`);
+
+// Also announce online in the Stoat #startup-ping channel (best-effort).
+await postStartupPingToStoat();

@@ -19,6 +19,7 @@ groups/*
 **/CLAUDE.local.md
 **/.claude-shared.md
 **/.claude-fragments/
+**/.claude/settings.local.json
 
 # Secrets
 *.keys.json

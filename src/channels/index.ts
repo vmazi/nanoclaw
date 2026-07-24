@@ -9,3 +9,4 @@
 import './cli.js';
 import './signal.js';
 import './stoat.js';
+import './matrix.js';

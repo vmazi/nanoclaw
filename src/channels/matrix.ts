@@ -160,6 +160,16 @@ registerChannelAdapter('matrix', {
     }
 
     const matrixAdapter = wrapWithDmResolution(createMatrixAdapter());
+
+    // The rust crypto store defaults to IndexedDB, which doesn't exist in Node —
+    // initRustCrypto throws "indexedDB getter returned null" and the whole adapter
+    // fails to start. Force the in-memory store so E2EE can initialize. Trade-off:
+    // keys aren't persisted across restarts yet (follow-up: disk-backed store).
+    (matrixAdapter as unknown as { e2eeConfig?: Record<string, unknown> }).e2eeConfig = {
+      ...(matrixAdapter as unknown as { e2eeConfig?: Record<string, unknown> }).e2eeConfig,
+      useIndexedDB: false,
+    };
+
     const bridge = createChatSdkBridge({ adapter: matrixAdapter, concurrency: 'concurrent', supportsThreads: false });
 
     // Matrix user IDs contain ":" (e.g. "@user:matrix.org") which the shared

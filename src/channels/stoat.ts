@@ -12,6 +12,7 @@
  */
 import type { ChannelAdapter, ChannelSetup, InboundMessage, OutboundMessage } from './adapter.js';
 import { registerChannelAdapter } from './channel-registry.js';
+import { MiniWebSocket } from './mini-ws.js';
 import { readEnvFile } from '../env.js';
 import { log } from '../log.js';
 
@@ -55,7 +56,7 @@ const MAX_CONTENT = 2000; // Revolt content length cap
 
 export function createStoatAdapter(config: StoatConfig): ChannelAdapter {
   let setup: ChannelSetup | null = null;
-  let ws: WebSocket | null = null;
+  let ws: MiniWebSocket | null = null;
   let connected = false;
   let closed = false;
   let botId: string | null = null;
@@ -191,7 +192,7 @@ export function createStoatAdapter(config: StoatConfig): ChannelAdapter {
   function connect(): void {
     if (closed || !wsUrl) return;
     const url = `${wsUrl}?version=1&format=json&token=${encodeURIComponent(config.botToken)}`;
-    const socket = new WebSocket(url);
+    const socket = new MiniWebSocket(url);
     ws = socket;
 
     socket.onopen = (): void => {

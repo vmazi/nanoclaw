@@ -8,3 +8,4 @@
 
 import './cli.js';
 import './signal.js';
+import './stoat.js';

@@ -110,4 +110,30 @@ export const readMatrixRoom: McpToolDefinition = {
   },
 };
 
-registerTools([createMatrixRoom, listMatrixRooms, readMatrixRoom]);
+export const setMatrixAvatar: McpToolDefinition = {
+  tool: {
+    name: 'set_matrix_avatar',
+    description:
+      "Set Cortex's own Matrix profile picture (avatar) to an image file. Pass the path to an image the user sent you — inbound images are saved to an inbox path like /workspace/inbox/<id>/photo.jpg (shown in the message). Use when the user asks you to change your Matrix profile pic/avatar to an image they shared. Confirmation arrives as a follow-up message.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        image_path: {
+          type: 'string',
+          description: 'Path to the image file to use as the avatar (e.g. /workspace/inbox/<id>/photo.jpg).',
+        },
+      },
+      required: ['image_path'],
+    },
+  },
+  async handler(args) {
+    writeMessageOut({
+      id: generateId(),
+      kind: 'system',
+      content: JSON.stringify({ action: 'set_matrix_avatar', image_path: args.image_path }),
+    });
+    return ok("Updating Cortex's Matrix profile picture — confirmation will arrive as a follow-up message.");
+  },
+};
+
+registerTools([createMatrixRoom, listMatrixRooms, readMatrixRoom, setMatrixAvatar]);

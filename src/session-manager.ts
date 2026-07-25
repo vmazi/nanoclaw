@@ -53,6 +53,37 @@ export function sessionDir(agentGroupId: string, sessionId: string): string {
   return path.join(sessionsBaseDir(), agentGroupId, sessionId);
 }
 
+/** How long an inbound attachment stays in a session's inbox before cleanup. */
+const INBOX_TTL_MS = 6 * 60 * 60 * 1000; // 6h
+
+/**
+ * Delete a session's inbox attachment sub-dirs older than INBOX_TTL_MS. The
+ * agent reads inbound images during its turn (well within the TTL), so we don't
+ * keep the bytes around — the source (Matrix homeserver, etc.) can re-serve
+ * them on demand. Called from the host sweep for each active session.
+ */
+export function cleanupSessionInbox(agentGroupId: string, sessionId: string): void {
+  const inboxRoot = path.join(sessionDir(agentGroupId, sessionId), 'inbox');
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(inboxRoot, { withFileTypes: true });
+  } catch {
+    return; // no inbox yet
+  }
+  const now = Date.now();
+  for (const entry of entries) {
+    const p = path.join(inboxRoot, entry.name);
+    try {
+      if (now - fs.statSync(p).mtimeMs > INBOX_TTL_MS) {
+        fs.rmSync(p, { recursive: true, force: true });
+        log.debug('Cleaned up stale inbox attachment', { sessionId, entry: entry.name });
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 /** Path to the host-owned inbound DB (messages_in + delivered). */
 export function inboundDbPath(agentGroupId: string, sessionId: string): string {
   return path.join(sessionDir(agentGroupId, sessionId), 'inbound.db');

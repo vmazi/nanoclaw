@@ -142,4 +142,34 @@ export const setMatrixAvatar: McpToolDefinition = {
   },
 };
 
-registerTools([createMatrixRoom, listMatrixRooms, readMatrixRoom, setMatrixAvatar]);
+export const setMatrixRoomAvatar: McpToolDefinition = {
+  tool: {
+    name: 'set_matrix_room_avatar',
+    description:
+      "Set the avatar (photo) of a Matrix room or Space that Cortex has permission in — e.g. the \"Borgorg\" space. Pass the room/space by name or id, plus the path to an image the user sent (an inbox path like /workspace/inbox/<id>/photo.jpg). Use when the user asks you to change a room's or space's photo. Cortex needs power to change room state there; a confirmation (or a permission error) arrives as a follow-up message.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        room: {
+          type: 'string',
+          description: 'Room or Space by name (e.g. "Borgorg") or id (e.g. "!abc:server").',
+        },
+        image_path: {
+          type: 'string',
+          description: 'Path to the image file to use as the avatar (e.g. /workspace/inbox/<id>/photo.jpg).',
+        },
+      },
+      required: ['room', 'image_path'],
+    },
+  },
+  async handler(args) {
+    writeMessageOut({
+      id: generateId(),
+      kind: 'system',
+      content: JSON.stringify({ action: 'set_matrix_room_avatar', room: args.room, image_path: args.image_path }),
+    });
+    return ok(`Setting the avatar for "${String(args.room)}" — confirmation will arrive as a follow-up message.`);
+  },
+};
+
+registerTools([createMatrixRoom, listMatrixRooms, readMatrixRoom, setMatrixAvatar, setMatrixRoomAvatar]);

@@ -150,6 +150,27 @@ export function setChannelRequestGate(fn: ChannelRequestGateFn): void {
   channelRequestGate = fn;
 }
 
+/**
+ * Auto-provision hook. Runs at the registration seam (a mention/DM on a
+ * messaging group with no wirings, not denied) BEFORE the channel-request
+ * gate. If it returns true it is expected to have created a wiring for `mg`
+ * (e.g. Matrix: a privileged sender's brand-new room wires itself to their
+ * existing agent group — same shared brain, its own session). The router
+ * then re-reads the wiring count and continues routing normally instead of
+ * escalating to a registration card. Returning false leaves the message to
+ * the normal drop/registration path.
+ */
+export type AutoProvisionHook = (mg: MessagingGroup, event: InboundEvent) => Promise<boolean>;
+
+let autoProvisionHook: AutoProvisionHook | null = null;
+
+export function setAutoProvisionHook(fn: AutoProvisionHook): void {
+  if (autoProvisionHook) {
+    log.warn('Auto-provision hook overwritten');
+  }
+  autoProvisionHook = fn;
+}
+
 function safeParseContent(raw: string): { text?: string; sender?: string; senderId?: string } {
   try {
     return JSON.parse(raw);
@@ -227,6 +248,22 @@ export async function routeInbound(event: InboundEvent): Promise<void> {
       return;
     }
 
+    // Auto-provision: give a privileged sender's brand-new channel a chance
+    // to wire itself (e.g. Matrix new room → same Cortex brain, own session)
+    // instead of escalating to registration. On success, re-read the wiring
+    // count and fall through to normal routing.
+    if (autoProvisionHook && (await autoProvisionHook(mg, event))) {
+      const refetched = getMessagingGroupWithAgentCount(event.channelType, event.platformId);
+      if (refetched && refetched.agentCount > 0) {
+        mg = refetched.mg;
+        agentCount = refetched.agentCount;
+      }
+    }
+  }
+
+  // 1c. Still no wirings after the auto-provision hook — silent drop (denied
+  //     handled above) or escalate to owner for channel-registration approval.
+  if (agentCount === 0) {
     const parsed = safeParseContent(event.message.content);
     recordDroppedMessage({
       channel_type: event.channelType,

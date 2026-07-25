@@ -13,6 +13,7 @@ import './self-mod.js';
 import './host-control.js';
 import './host-run.js';
 import './worktree-agent.js';
+import './matrix-rooms.js';
 import { startMcpServer } from './server.js';
 
 function log(msg: string): void {

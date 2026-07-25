@@ -367,8 +367,11 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
 
     async deliver(platformId: string, threadId: string | null, message): Promise<string | undefined> {
       // platformId is already in the adapter's encoded format (e.g. "telegram:6037840640",
-      // "discord:guildId:channelId") — use it directly as the thread ID
-      const tid = threadId ?? platformId;
+      // "discord:guildId:channelId") — use it directly as the thread ID. Use `||`
+      // (not `??`) so an empty-string threadId — which some delivery paths carry
+      // (e.g. wake-ping rows with thread_id='') — falls back to platformId instead
+      // of producing a "" thread id and a malformed platform request.
+      const tid = threadId || platformId;
       const content = message.content as Record<string, unknown>;
 
       if (content.operation === 'edit' && content.messageId) {
@@ -507,7 +510,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
     },
 
     async setTyping(platformId: string, threadId: string | null) {
-      const tid = threadId ?? platformId;
+      const tid = threadId || platformId;
       await adapter.startTyping(tid);
     },
 

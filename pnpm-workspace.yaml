@@ -3,6 +3,10 @@ onlyBuiltDependencies:
   - esbuild
   - protobufjs
   - sharp
+  # matrix-sdk-crypto-nodejs: native Rust E2EE for the Matrix adapter (option B).
+  # postinstall (download-lib.js) fetches a prebuilt platform binary; on-disk
+  # crypto store with correct to-device key distribution. Human-approved.
+  - '@matrix-org/matrix-sdk-crypto-nodejs'
 
 pnpm:
   minimumReleaseAge: 4320

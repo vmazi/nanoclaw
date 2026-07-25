@@ -4,6 +4,23 @@
  * Thin orchestrator: init DB, run migrations, start channel adapters,
  * start delivery polls, start sweep, handle shutdown.
  */
+
+// Polyfill Promise.withResolvers for Node < 22. matrix-js-sdk's MatrixScheduler
+// (used to queue/send Matrix events) calls it; the host runs on Node 20, where
+// it's absent, so message delivery throws "Promise.withResolvers is not a
+// function". Must run before any matrix-js-sdk send path executes.
+if (typeof (Promise as unknown as { withResolvers?: unknown }).withResolvers !== 'function') {
+  (Promise as unknown as { withResolvers: <T>() => { promise: Promise<T>; resolve: (v: T | PromiseLike<T>) => void; reject: (r?: unknown) => void } }).withResolvers = function <T>() {
+    let resolve!: (v: T | PromiseLike<T>) => void;
+    let reject!: (r?: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    return { promise, resolve, reject };
+  };
+}
+
 import path from 'path';
 
 import { backfillContainerConfigs } from './backfill-container-configs.js';

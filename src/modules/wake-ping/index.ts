@@ -17,11 +17,11 @@ export function getGitRev(): string {
   }
 }
 
-export function buildWakePingText(): string {
+export function buildWakePingText(channel = 'Signal'): string {
   const rev = getGitRev();
   const time = new Date().toLocaleTimeString();
   return (
-    `[wake-ping] You just came online. Send EXACTLY this DM to vmaz on Signal — ` +
+    `[wake-ping] You just came online. Send EXACTLY this DM to vmaz on ${channel} — ` +
     `do NOT try to verify the revision yourself from /app (that's the container, not the host repo); ` +
     `the rev below was captured on the host where the actual nanoclaw repo lives:\n\n` +
     `<message to="vmaz">🧠\n🟢 Cortex online @ ${time} — rev ${rev}</message>`

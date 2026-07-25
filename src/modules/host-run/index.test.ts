@@ -63,6 +63,21 @@ describe('isAllowedHostCommand', () => {
     expect(isAllowedHostCommand('podman compose logs caddy')).toBe(true);
   });
 
+  it('allows read-only tailscale monitoring but not mutations', () => {
+    expect(isAllowedHostCommand('tailscale status')).toBe(true);
+    expect(isAllowedHostCommand('tailscale status --json')).toBe(true);
+    expect(isAllowedHostCommand('tailscale ip -4')).toBe(true);
+    expect(isAllowedHostCommand('tailscale netcheck')).toBe(true);
+    expect(isAllowedHostCommand('tailscale ping 100.64.0.1')).toBe(true);
+    expect(isAllowedHostCommand('tailscale exit-node list')).toBe(true);
+    expect(isAllowedHostCommand('tailscale dns status')).toBe(true);
+    // mutating tailscale commands stay blocked
+    expect(isAllowedHostCommand('tailscale up')).toBe(false);
+    expect(isAllowedHostCommand('tailscale down')).toBe(false);
+    expect(isAllowedHostCommand('tailscale set --exit-node foo')).toBe(false);
+    expect(isAllowedHostCommand('tailscale logout')).toBe(false);
+  });
+
   it('allows a leading `cd <abs-path> &&` prefix', () => {
     expect(isAllowedHostCommand('cd /var/home/vmaz/dev/automagica-platform && podman compose build admin-ui')).toBe(
       true,

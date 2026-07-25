@@ -7,11 +7,14 @@
  * (registered on the same `host_run` action) does the actual child_process
  * spawn after the admin approves, and notifies the agent with the result.
  *
- * Allowlist: image builds, container inspection, and compose service mgmt —
+ * Allowlist: image builds, container inspection, compose service mgmt, and
+ * read-only tailscale monitoring —
  *   `podman build`, `docker build`,
  *   `podman logs`, `docker logs`, `podman ps`, `docker ps`,
  *   `podman compose build|run|up|down|start|stop|restart|ps|logs`,
- *   `docker compose build|run|up|down|start|stop|restart|ps|logs`
+ *   `docker compose build|run|up|down|start|stop|restart|ps|logs`,
+ *   `tailscale status|ip|netcheck|ping|whois|version|licenses|list|metric`,
+ *   `tailscale dns|lock|exit-node status|list`
  * optionally prefixed with a single `cd <abs-path> && `. No shell chaining.
  * Other host operations should grow dedicated MCP tools rather than ride
  * on host_run.
@@ -44,9 +47,10 @@ const SELF_KILL_PATTERN =
 
 // Top-level verbs the agent is permitted to invoke through host_run.
 // Includes read-only inspection (`logs`, `ps`) so the agent can read container
-// logs and status on the host (e.g. `podman logs caddy`).
+// logs and status on the host (e.g. `podman logs caddy`), plus read-only
+// tailscale monitoring (status/ip/netcheck/… — never up/down/set/login).
 const ALLOWED_VERB =
-  /^(podman\s+(build|logs|ps)|docker\s+(build|logs|ps)|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs))(\s|$)/i;
+  /^(podman\s+(build|logs|ps)|docker\s+(build|logs|ps)|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|tailscale\s+(status|ip|netcheck|ping|whois|version|licenses|list|metric|(dns|lock|exit-node)\s+(status|list)))(\s|$)/i;
 
 // Shell control operators that could chain another command after the
 // allowed verb. A single `cd <abs> && ` prefix is stripped before this
@@ -94,7 +98,7 @@ registerDeliveryAction('host_run', async (content, session) => {
   if (!isAllowedHostCommand(command)) {
     notifyAgent(
       session,
-      '[host_run] refused: command not in allowlist. Permitted (optionally prefixed with `cd <abs-path> &&`):\n  • podman build ... / docker build ...\n  • podman logs ... / docker logs ...\n  • podman ps ... / docker ps ...\n  • podman compose build|run|up|down|start|stop|restart|ps|logs ...\n  • docker compose build|run|up|down|start|stop|restart|ps|logs ...\nNo shell chaining (`;`, `&&` other than the cd prefix, `||`, `|`, backticks, `$(...)`).',
+      '[host_run] refused: command not in allowlist. Permitted (optionally prefixed with `cd <abs-path> &&`):\n  • podman build ... / docker build ...\n  • podman logs ... / docker logs ...\n  • podman ps ... / docker ps ...\n  • podman compose build|run|up|down|start|stop|restart|ps|logs ...\n  • docker compose build|run|up|down|start|stop|restart|ps|logs ...\n  • tailscale status|ip|netcheck|ping|whois|version|licenses|list|metric ...\n  • tailscale dns|lock|exit-node status|list ...\nNo shell chaining (`;`, `&&` other than the cd prefix, `||`, `|`, backticks, `$(...)`).',
     );
     return;
   }

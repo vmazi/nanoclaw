@@ -69,4 +69,45 @@ export const createMatrixRoom: McpToolDefinition = {
   },
 };
 
-registerTools([createMatrixRoom]);
+export const listMatrixRooms: McpToolDefinition = {
+  tool: {
+    name: 'list_matrix_rooms',
+    description:
+      'List the Matrix rooms Cortex is in (name + id). Use this to discover what channels exist before reading one with read_matrix_room. The result is delivered back to you as a follow-up message (async).',
+    inputSchema: { type: 'object' as const, properties: {} },
+  },
+  async handler() {
+    writeMessageOut({
+      id: generateId(),
+      kind: 'system',
+      content: JSON.stringify({ action: 'list_matrix_rooms' }),
+    });
+    return ok('Fetching the list of Matrix rooms — it will arrive as a follow-up message.');
+  },
+};
+
+export const readMatrixRoom: McpToolDefinition = {
+  tool: {
+    name: 'read_matrix_room',
+    description:
+      "Read recent messages from another Matrix room Cortex is in — useful when the user references something said in a different channel. Identify the room by name (e.g. \"ops\"; Cortex resolves it) or by room id. The decrypted messages are delivered back to you as a follow-up message (async). Only rooms Cortex has joined are readable.",
+    inputSchema: {
+      type: 'object' as const,
+      properties: {
+        room: { type: 'string', description: 'Room name (e.g. "ops") or room id (e.g. "!abc:server").' },
+        limit: { type: 'number', description: 'How many recent messages to fetch (default 30, max 100).' },
+      },
+      required: ['room'],
+    },
+  },
+  async handler(args) {
+    writeMessageOut({
+      id: generateId(),
+      kind: 'system',
+      content: JSON.stringify({ action: 'read_matrix_room', room: args.room, limit: args.limit }),
+    });
+    return ok(`Reading recent messages from "${String(args.room)}" — they will arrive as a follow-up message.`);
+  },
+};
+
+registerTools([createMatrixRoom, listMatrixRooms, readMatrixRoom]);

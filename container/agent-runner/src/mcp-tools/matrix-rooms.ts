@@ -26,7 +26,7 @@ export const createMatrixRoom: McpToolDefinition = {
   tool: {
     name: 'create_matrix_room',
     description:
-      'Create a new encrypted Matrix room and wire it to your agent group so it becomes its own session/conversation. Invite the given Matrix user(s). Optionally set a name/topic and post an opening message immediately. Use when the user asks you to start a new Matrix chat, channel, or room. Fire-and-forget: the room is created on the host asynchronously.',
+      'Create a new encrypted Matrix room and wire it to your agent group so it becomes its own session/conversation. Invite the given Matrix user(s). Optionally set a name/topic, post an opening message, and place the room inside a Matrix Space (e.g. the "Borgorg" space) by name or id. Use when the user asks you to start a new Matrix chat, channel, or room. Fire-and-forget: the room is created on the host asynchronously; a confirmation (incl. whether it was added to the space) arrives as a follow-up message.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -40,6 +40,11 @@ export const createMatrixRoom: McpToolDefinition = {
         opening_message: {
           type: 'string',
           description: 'Optional message posted into the new room immediately after creation.',
+        },
+        space: {
+          type: 'string',
+          description:
+            'Optional Matrix Space to place the room in, by name (e.g. "Borgorg") or space id. Cortex must be a member of the space with permission to add rooms.',
         },
         direct: {
           type: 'boolean',
@@ -60,6 +65,7 @@ export const createMatrixRoom: McpToolDefinition = {
         name: args.name,
         topic: args.topic,
         opening_message: args.opening_message,
+        space: args.space,
         direct: args.direct,
       }),
     });

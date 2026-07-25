@@ -7,10 +7,11 @@
  * (registered on the same `host_run` action) does the actual child_process
  * spawn after the admin approves, and notifies the agent with the result.
  *
- * Allowlist: image builds and compose service management —
+ * Allowlist: image builds, container inspection, and compose service mgmt —
  *   `podman build`, `docker build`,
- *   `podman compose build|run|up|down|start|stop|restart|ps`,
- *   `docker compose build|run|up|down|start|stop|restart|ps`
+ *   `podman logs`, `docker logs`, `podman ps`, `docker ps`,
+ *   `podman compose build|run|up|down|start|stop|restart|ps|logs`,
+ *   `docker compose build|run|up|down|start|stop|restart|ps|logs`
  * optionally prefixed with a single `cd <abs-path> && `. No shell chaining.
  * Other host operations should grow dedicated MCP tools rather than ride
  * on host_run.
@@ -42,8 +43,10 @@ const SELF_KILL_PATTERN =
   /\b(systemctl(\s+--user)?\s+(restart|stop|reload|kill)\s+\S*nanoclaw|launchctl\s+(unload|stop|kickstart)[^\n]*com\.nanoclaw|pkill[^\n]*nanoclaw)\b/i;
 
 // Top-level verbs the agent is permitted to invoke through host_run.
+// Includes read-only inspection (`logs`, `ps`) so the agent can read container
+// logs and status on the host (e.g. `podman logs caddy`).
 const ALLOWED_VERB =
-  /^(podman\s+build|docker\s+build|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps))(\s|$)/i;
+  /^(podman\s+(build|logs|ps)|docker\s+(build|logs|ps)|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs))(\s|$)/i;
 
 // Shell control operators that could chain another command after the
 // allowed verb. A single `cd <abs> && ` prefix is stripped before this
@@ -91,7 +94,7 @@ registerDeliveryAction('host_run', async (content, session) => {
   if (!isAllowedHostCommand(command)) {
     notifyAgent(
       session,
-      '[host_run] refused: command not in allowlist. Permitted (optionally prefixed with `cd <abs-path> &&`):\n  • podman build ...\n  • docker build ...\n  • podman compose build|run|up|down|start|stop|restart|ps ...\n  • docker compose build|run|up|down|start|stop|restart|ps ...\nNo shell chaining (`;`, `&&` other than the cd prefix, `||`, `|`, backticks, `$(...)`).',
+      '[host_run] refused: command not in allowlist. Permitted (optionally prefixed with `cd <abs-path> &&`):\n  • podman build ... / docker build ...\n  • podman logs ... / docker logs ...\n  • podman ps ... / docker ps ...\n  • podman compose build|run|up|down|start|stop|restart|ps|logs ...\n  • docker compose build|run|up|down|start|stop|restart|ps|logs ...\nNo shell chaining (`;`, `&&` other than the cd prefix, `||`, `|`, backticks, `$(...)`).',
     );
     return;
   }

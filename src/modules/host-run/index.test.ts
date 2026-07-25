@@ -54,6 +54,15 @@ describe('isAllowedHostCommand', () => {
     expect(isAllowedHostCommand('podman compose ps')).toBe(true);
   });
 
+  it('allows read-only container inspection (logs, ps)', () => {
+    expect(isAllowedHostCommand('podman logs caddy')).toBe(true);
+    expect(isAllowedHostCommand('podman logs --tail 100 caddy')).toBe(true);
+    expect(isAllowedHostCommand('docker logs my-container')).toBe(true);
+    expect(isAllowedHostCommand('podman ps')).toBe(true);
+    expect(isAllowedHostCommand('docker ps -a')).toBe(true);
+    expect(isAllowedHostCommand('podman compose logs caddy')).toBe(true);
+  });
+
   it('allows a leading `cd <abs-path> &&` prefix', () => {
     expect(isAllowedHostCommand('cd /var/home/vmaz/dev/automagica-platform && podman compose build admin-ui')).toBe(
       true,
@@ -65,7 +74,7 @@ describe('isAllowedHostCommand', () => {
     expect(isAllowedHostCommand('make build')).toBe(false);
     expect(isAllowedHostCommand('./container/build.sh')).toBe(false);
     expect(isAllowedHostCommand('ls /tmp')).toBe(false);
-    expect(isAllowedHostCommand('podman ps')).toBe(false);
+    expect(isAllowedHostCommand('podman rm -f caddy')).toBe(false);
     expect(isAllowedHostCommand('docker run -it alpine sh')).toBe(false);
     expect(isAllowedHostCommand('podman pull alpine')).toBe(false);
   });

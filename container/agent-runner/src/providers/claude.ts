@@ -262,12 +262,43 @@ function createPreCompactHook(assistantName?: string): HookCallback {
 
 /**
  * Claude Code auto-compacts context at this window (tokens). Sized for the
- * 1M-context models; compaction fires at roughly 80% of this value.
+ * 1M-context models; compaction fires somewhat below this value.
+ *
+ * This is only ever an upper bound Claude Code will honour down to: the
+ * effective window is min(this, the model's context window), so it does
+ * nothing on its own unless the model is also resolved at 1M — see
+ * withLongContext below.
  *
  * Note: the env override below only works if the var is explicitly forwarded
  * into the container — buildContainerArgs does not pass host env through.
  */
 const CLAUDE_CODE_AUTO_COMPACT_WINDOW = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '700000';
+
+/**
+ * Models that do not have a 1M context window. Everything else — including
+ * models newer than the installed Claude Code — is assumed to have one.
+ *
+ * The deny-list direction is deliberate. Claude Code only recognises the
+ * models it shipped with; anything newer falls back to a 200k default, which
+ * is exactly the case we need to fix (claude-opus-5 reports max_input_tokens
+ * of 1000000 to /v1/models, but Claude Code 2.1.x still assumes 200k for it).
+ * An allow-list would silently go stale on every model release.
+ */
+const NO_LONG_CONTEXT_RE = /claude-3|claude-opus-4-[015]|claude-haiku/i;
+
+/**
+ * Claude Code caps the auto-compact window at the model's context window, and
+ * decides that window from a built-in table rather than the model's advertised
+ * capabilities. The `[1m]` suffix is its documented way of being told to use
+ * the 1M window: it both raises that cap and adds the `context-1m-2025-08-07`
+ * beta to the request. Claude Code appends it to its *own* default model for
+ * first-party auth, but a pinned model string bypasses that entirely — so
+ * without this, every group with an explicit model compacts at 200k.
+ */
+export function withLongContext(model: string | undefined): string | undefined {
+  if (!model || /\[1m\]$/i.test(model) || NO_LONG_CONTEXT_RE.test(model)) return model;
+  return `${model}[1m]`;
+}
 
 /**
  * Stale-session detection. Matches Claude Code's error text when a
@@ -299,7 +330,7 @@ export class ClaudeProvider implements AgentProvider {
     this.assistantName = options.assistantName;
     this.mcpServers = options.mcpServers ?? {};
     this.additionalDirectories = options.additionalDirectories;
-    this.model = options.model;
+    this.model = withLongContext(options.model);
     this.effort = options.effort;
     this.env = {
       ...(options.env ?? {}),

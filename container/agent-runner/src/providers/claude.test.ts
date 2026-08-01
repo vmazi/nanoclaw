@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { ClaudeProvider } from './claude.js';
+import { ClaudeProvider, withLongContext } from './claude.js';
 
 describe('ClaudeProvider.isSessionInvalid', () => {
   const provider = new ClaudeProvider();
@@ -22,5 +22,25 @@ describe('ClaudeProvider.isSessionInvalid', () => {
     expect(provider.isSessionInvalid(new Error('fetch failed'))).toBe(false);
     expect(provider.isSessionInvalid(new Error('Rate limit exceeded'))).toBe(false);
     expect(provider.isSessionInvalid(new Error('Bash tool timed out'))).toBe(false);
+  });
+});
+
+describe('withLongContext', () => {
+  it('opts models newer than Claude Code into the 1M window', () => {
+    expect(withLongContext('claude-opus-5')).toBe('claude-opus-5[1m]');
+    expect(withLongContext('claude-opus-4-8')).toBe('claude-opus-4-8[1m]');
+    expect(withLongContext('claude-sonnet-4-6')).toBe('claude-sonnet-4-6[1m]');
+  });
+
+  it('leaves models without a 1M window alone', () => {
+    expect(withLongContext('claude-opus-4-5')).toBe('claude-opus-4-5');
+    expect(withLongContext('claude-opus-4-1')).toBe('claude-opus-4-1');
+    expect(withLongContext('claude-haiku-4-5')).toBe('claude-haiku-4-5');
+    expect(withLongContext('claude-3-5-sonnet')).toBe('claude-3-5-sonnet');
+  });
+
+  it('is idempotent and passes through an unset model', () => {
+    expect(withLongContext('claude-opus-5[1m]')).toBe('claude-opus-5[1m]');
+    expect(withLongContext(undefined)).toBeUndefined();
   });
 });

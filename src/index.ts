@@ -10,7 +10,15 @@
 // it's absent, so message delivery throws "Promise.withResolvers is not a
 // function". Must run before any matrix-js-sdk send path executes.
 if (typeof (Promise as unknown as { withResolvers?: unknown }).withResolvers !== 'function') {
-  (Promise as unknown as { withResolvers: <T>() => { promise: Promise<T>; resolve: (v: T | PromiseLike<T>) => void; reject: (r?: unknown) => void } }).withResolvers = function <T>() {
+  (
+    Promise as unknown as {
+      withResolvers: <T>() => {
+        promise: Promise<T>;
+        resolve: (v: T | PromiseLike<T>) => void;
+        reject: (r?: unknown) => void;
+      };
+    }
+  ).withResolvers = function <T>() {
     let resolve!: (v: T | PromiseLike<T>) => void;
     let reject!: (r?: unknown) => void;
     const promise = new Promise<T>((res, rej) => {

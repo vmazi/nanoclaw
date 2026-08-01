@@ -408,7 +408,7 @@ async function processQuery(
   return { continuation: queryContinuation };
 }
 
-function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
+function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
   switch (event.type) {
     case 'init':
       log(`Session: ${event.continuation}`);
@@ -423,8 +423,35 @@ function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
       break;
     case 'progress':
       log(`Progress: ${event.message}`);
+      sendProgress(event.message, routing);
       break;
   }
+}
+
+/**
+ * Forward a progress notification into the conversation the turn came from.
+ *
+ * The provider only raises these for slow or backgrounded tool calls, so they
+ * arrive at the pace of "this is taking a while" rather than once per tool —
+ * on the order of a handful a day. Previously they reached the container log
+ * and nowhere else, so the only way to tell a long turn apart from a wedged
+ * one was to ask.
+ *
+ * Routing is the initial batch's, not per-destination: a progress ping belongs
+ * in the conversation that asked for the work, not fanned out to every
+ * destination a shared session happens to reach.
+ */
+export function sendProgress(message: string, routing: RoutingContext): void {
+  if (!routing.platformId || !routing.channelType) return;
+  writeMessageOut({
+    id: generateId(),
+    in_reply_to: routing.inReplyTo,
+    kind: 'chat',
+    platform_id: routing.platformId,
+    channel_type: routing.channelType,
+    thread_id: routing.threadId,
+    content: JSON.stringify({ text: `… ${message}` }),
+  });
 }
 
 /**

@@ -5,6 +5,7 @@ import { getPendingMessages, markCompleted } from './db/messages-in.js';
 import { getUndeliveredMessages } from './db/messages-out.js';
 import { formatMessages, extractRouting } from './formatter.js';
 import { MockProvider } from './providers/mock.js';
+import { sendProgress } from './poll-loop.js';
 
 beforeEach(() => {
   initTestSessionDb();
@@ -273,6 +274,40 @@ describe('origin metadata (from= attribute)', () => {
     const prompt = formatMessages(getPendingMessages());
     expect(prompt).toContain('<system_response');
     expect(prompt).toContain('from="discord-main"');
+  });
+});
+
+describe('progress forwarding', () => {
+  it('delivers a progress notification to the originating conversation', () => {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, content)
+         VALUES ('m1', 'chat', datetime('now'), 'pending', 'chan-123', 'matrix', 'thread-456', '{"text":"do the thing"}')`,
+      )
+      .run();
+    const routing = extractRouting(getPendingMessages());
+
+    sendProgress('Running the full test suite', routing);
+
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(JSON.parse(out[0].content).text).toBe('… Running the full test suite');
+    // Lands in the same room and thread as the request that triggered the work.
+    expect(out[0].platform_id).toBe('chan-123');
+    expect(out[0].channel_type).toBe('matrix');
+    expect(out[0].thread_id).toBe('thread-456');
+    expect(out[0].in_reply_to).toBe('m1');
+  });
+
+  it('drops the notification when there is no conversation to send it to', () => {
+    // Scheduled tasks and wake triggers have no originating channel — there is
+    // nowhere to deliver a progress ping, so it must not be written at all.
+    insertMessage('t1', 'task', { prompt: 'nightly sweep' });
+    const routing = extractRouting(getPendingMessages());
+
+    sendProgress('Halfway through', routing);
+
+    expect(getUndeliveredMessages()).toHaveLength(0);
   });
 });
 

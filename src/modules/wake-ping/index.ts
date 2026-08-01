@@ -4,7 +4,10 @@
  * same "I'm back online" announcement.
  */
 import { execSync } from 'node:child_process';
-import { readEnvFile } from '../../env.js';
+import { getDeliveryAdapter } from '../../delivery.js';
+import { log } from '../../log.js';
+import { pickApprover } from '../approvals/primitive.js';
+import { ensureUserDm } from '../permissions/user-dm.js';
 
 export function getGitRev(): string {
   try {
@@ -29,30 +32,50 @@ export function buildWakePingText(channel = 'Signal'): string {
 }
 
 /**
- * Post the same "Cortex online" announcement into the Stoat #startup-ping
- * channel, straight over the REST API as the bot. Best-effort: any missing
- * config (no token / no channel) or network error is swallowed so a restart is
- * never blocked on the announcement. Runs host-side in both the host-restart
- * (scripts/wake-ping.ts) and container-restart paths.
+ * Announce "Cortex online" straight into the operator's DM on every channel
+ * they're reachable on, host-side.
+ *
+ * This deliberately does not go through an agent session. The previous
+ * approach injected an on_wake row into "the newest session directory" and
+ * relied on that container waking and composing the message itself, which
+ * failed three ways at once: the newest directory is not necessarily the room
+ * anyone is watching, on_wake rows are only visible on a container's first
+ * poll, and a wedged session swallows the row with no trace. Delivering here
+ * uses the same resolution approvals use — the one path known to reach the
+ * operator reliably.
+ *
+ * Best-effort throughout: a restart is never blocked or failed on the
+ * announcement.
  */
-export async function postStartupPingToStoat(): Promise<void> {
-  const env = readEnvFile(['STOAT_BOT_TOKEN', 'STOAT_API_URL', 'STOAT_STARTUP_PING_CHANNEL']);
-  const token = process.env.STOAT_BOT_TOKEN || env.STOAT_BOT_TOKEN;
-  const channel = process.env.STOAT_STARTUP_PING_CHANNEL || env.STOAT_STARTUP_PING_CHANNEL;
-  if (!token || !channel) return;
-  const apiUrl = (process.env.STOAT_API_URL || env.STOAT_API_URL || 'https://sig.borgorg.org/api').replace(/\/$/, '');
-  const content = `🧠 🟢 Cortex online @ ${new Date().toLocaleTimeString()} — rev ${getGitRev()}`;
-  try {
-    await fetch(`${apiUrl}/channels/${channel}/messages`, {
-      method: 'POST',
-      headers: {
-        'X-Bot-Token': token,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': `startup-${Date.now()}`,
-      },
-      body: JSON.stringify({ content }),
-    });
-  } catch {
-    /* best-effort — never block startup on the announcement */
+export async function postStartupPingToUserDms(agentGroupId: string | null = null): Promise<void> {
+  const adapter = getDeliveryAdapter();
+  if (!adapter) return;
+
+  const text = `🧠 🟢 Cortex online @ ${new Date().toLocaleTimeString()} — rev ${getGitRev()}`;
+  // One operator can be an approver on several channels; dedupe by the
+  // resolved DM so they get one ping per channel, not one per role grant.
+  const delivered = new Set<string>();
+
+  for (const userId of pickApprover(agentGroupId)) {
+    let mg;
+    try {
+      mg = await ensureUserDm(userId);
+    } catch (err) {
+      log.error('startup ping: DM resolution failed', { userId, err });
+      continue;
+    }
+    if (!mg) continue;
+
+    const key = `${mg.channel_type}:${mg.platform_id}`;
+    if (delivered.has(key)) continue;
+    delivered.add(key);
+
+    try {
+      await adapter.deliver(mg.channel_type, mg.platform_id, null, 'chat', JSON.stringify({ text }));
+    } catch (err) {
+      log.error('startup ping: delivery failed', { channelType: mg.channel_type, err });
+    }
   }
+
+  log.info('Startup ping sent', { destinations: delivered.size });
 }

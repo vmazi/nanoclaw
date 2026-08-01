@@ -39,6 +39,7 @@ import { initDb } from './db/connection.js';
 import { runMigrations } from './db/migrations/index.js';
 import { ensureContainerRuntimeRunning, cleanupOrphans } from './container-runtime.js';
 import { startActiveDeliveryPoll, startSweepDeliveryPoll, setDeliveryAdapter, stopDeliveryPolls } from './delivery.js';
+import { postStartupPingToUserDms } from './modules/wake-ping/index.js';
 import { startHostSweep, stopHostSweep } from './host-sweep.js';
 import { routeInbound } from './router.js';
 import { log } from './log.js';
@@ -203,6 +204,11 @@ async function main(): Promise<void> {
   await startCliServer();
 
   log.info('NanoClaw running');
+
+  // 8. Announce we're back. Host restarts previously relied on
+  // scripts/wake-ping.ts seeding an agent session, which could be swallowed
+  // silently; deliver to the operator's DM directly instead.
+  void postStartupPingToUserDms();
 }
 
 /** Graceful shutdown. */

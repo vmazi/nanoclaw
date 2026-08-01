@@ -7,7 +7,7 @@
 import { isContainerRunning, killContainer, wakeContainer } from './container-runner.js';
 import { getSession, getSessionsByAgentGroup } from './db/sessions.js';
 import { log } from './log.js';
-import { buildWakePingText, postStartupPingToStoat } from './modules/wake-ping/index.js';
+import { buildWakePingText, postStartupPingToUserDms } from './modules/wake-ping/index.js';
 import { writeSessionMessage } from './session-manager.js';
 
 /**
@@ -64,8 +64,8 @@ export function restartAgentGroupContainers(agentGroupId: string, reason: string
 
   if (sessions.length > 0) {
     log.info('Restarting agent group containers', { agentGroupId, reason, count: sessions.length });
-    // Announce online in the Stoat #startup-ping channel (best-effort, fire-and-forget).
-    void postStartupPingToStoat();
+    // Announce online in the operator's DM (best-effort, fire-and-forget).
+    void postStartupPingToUserDms(agentGroupId);
   }
   return sessions.length;
 }

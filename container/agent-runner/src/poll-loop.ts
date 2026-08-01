@@ -193,20 +193,27 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
       // Stale/corrupt continuation recovery: ask the provider whether
       // this error means the stored continuation is unusable, and clear
       // it so the next attempt starts fresh.
+      let sessionReset = false;
       if (continuation && config.provider.isSessionInvalid(err)) {
         log(`Stale session detected (${continuation}) — clearing for next retry`);
         continuation = undefined;
         clearContinuation(config.providerName);
+        sessionReset = true;
       }
 
-      // Write error response so the user knows something went wrong
+      // Write error response so the user knows something went wrong. When the
+      // continuation was dropped, say so — the next turn starts with no prior
+      // context and the user is the only one who can tell it where we were.
+      const resetNote = sessionReset
+        ? '\n\nThe conversation context was unusable and has been reset — the next message starts fresh.'
+        : '';
       writeMessageOut({
         id: generateId(),
         kind: 'chat',
         platform_id: routing.platformId,
         channel_type: routing.channelType,
         thread_id: routing.threadId,
-        content: JSON.stringify({ text: `Error: ${errMsg}` }),
+        content: JSON.stringify({ text: `Error: ${errMsg}${resetNote}` }),
       });
     } finally {
       clearCurrentInReplyTo();

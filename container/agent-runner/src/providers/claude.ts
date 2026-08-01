@@ -4,6 +4,7 @@ import path from 'path';
 import { query as sdkQuery, type HookCallback, type PreCompactHookInput } from '@anthropic-ai/claude-agent-sdk';
 
 import { clearContainerToolInFlight, setContainerToolInFlight } from '../db/connection.js';
+import { IMAGE_PATH_RE, readImageDims } from '../image-dims.js';
 import { registerProvider } from './provider-registry.js';
 import type { AgentProvider, AgentQuery, McpServerConfig, ProviderEvent, ProviderOptions, QueryInput } from './types.js';
 
@@ -152,6 +153,15 @@ function formatTranscriptMarkdown(messages: ParsedMessage[], title?: string | nu
 }
 
 /**
+ * The API rejects a whole request when any image in the conversation exceeds
+ * this on either axis. Because the transcript is replayed on every resume,
+ * one oversized image poisons the session permanently — every later turn
+ * fails until the session is cleared. Images only enter the transcript via
+ * Read, so that is where it has to be caught.
+ */
+const MAX_IMAGE_DIMENSION = 2000;
+
+/**
  * PreToolUse hook: record the current tool + its declared timeout so the host
  * sweep can widen its stuck tolerance while Bash is running a long-declared
  * script. Defense-in-depth: if SDK_DISALLOWED_TOOLS slips through somehow,
@@ -165,6 +175,23 @@ const preToolUseHook: HookCallback = async (input) => {
       decision: 'block',
       stopReason: `Tool '${toolName}' is not available in this environment — use the nanoclaw equivalent.`,
     } as unknown as ReturnType<HookCallback>;
+  }
+
+  if (toolName === 'Read') {
+    const filePath = i.tool_input?.file_path;
+    if (typeof filePath === 'string' && IMAGE_PATH_RE.test(filePath)) {
+      const dims = readImageDims(filePath);
+      if (dims && Math.max(dims.width, dims.height) > MAX_IMAGE_DIMENSION) {
+        return {
+          decision: 'block',
+          stopReason:
+            `Refusing to read ${filePath}: it is ${dims.width}x${dims.height}, over the ${MAX_IMAGE_DIMENSION}px ` +
+            `limit. Reading it would poison this session — every later turn would fail until the session was cleared. ` +
+            `Downscale it to ${MAX_IMAGE_DIMENSION}px or less on the long edge, write the smaller copy to a new path, ` +
+            `and read that instead.`,
+        } as unknown as ReturnType<HookCallback>;
+      }
+    }
   }
   // Bash exposes its timeout via the tool_input.timeout field (ms). Any other
   // tool: no declared timeout.
@@ -250,6 +277,15 @@ const CLAUDE_CODE_AUTO_COMPACT_WINDOW = process.env.CLAUDE_CODE_AUTO_COMPACT_WIN
  */
 const STALE_SESSION_RE = /no conversation found|ENOENT.*\.jsonl|session.*not found/i;
 
+/**
+ * Errors that mean the resumed transcript itself is unusable rather than the
+ * request being at fault. Retrying is pointless — the offending content is
+ * replayed on every resume — so the continuation has to be dropped for the
+ * next turn to have any chance. The oversized-image case is the one we've
+ * actually hit; it wedged a session for an hour because nothing cleared it.
+ */
+const POISONED_TRANSCRIPT_RE = /exceeds the dimension limit|start a new session/i;
+
 export class ClaudeProvider implements AgentProvider {
   readonly supportsNativeSlashCommands = true;
 
@@ -274,7 +310,7 @@ export class ClaudeProvider implements AgentProvider {
 
   isSessionInvalid(err: unknown): boolean {
     const msg = err instanceof Error ? err.message : String(err);
-    return STALE_SESSION_RE.test(msg);
+    return STALE_SESSION_RE.test(msg) || POISONED_TRANSCRIPT_RE.test(msg);
   }
 
   query(input: QueryInput): AgentQuery {
@@ -346,7 +382,18 @@ export class ClaudeProvider implements AgentProvider {
         } else if (message.type === 'system' && message.subtype === 'init') {
           yield { type: 'init', continuation: message.session_id };
         } else if (message.type === 'result') {
-          const finalText = 'result' in message ? (message as { result?: string }).result ?? null : null;
+          const res = message as { result?: string; is_error?: boolean; subtype?: string };
+          const finalText = 'result' in message ? res.result ?? null : null;
+          // An error result is not assistant text. Left as a normal result it
+          // gets parsed for <message> blocks, finds none, and is logged as
+          // scratchpad — so the turn fails completely silently and the user
+          // sees nothing at all. Throw instead: the poll loop reports it to
+          // the room and drops the continuation if the session is unusable.
+          if (res.is_error || (res.subtype && res.subtype !== 'success')) {
+            throw new Error(
+              `Claude Code returned an error result: ${finalText ?? res.subtype ?? 'unknown error'}`,
+            );
+          }
           const parts = [...intermediateTexts, ...(finalText ? [finalText] : [])];
           const text = parts.length > 0 ? parts.join('\n') : null;
           yield { type: 'result', text };

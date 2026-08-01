@@ -63,6 +63,22 @@ describe('isAllowedHostCommand', () => {
     expect(isAllowedHostCommand('podman compose logs caddy')).toBe(true);
   });
 
+  it('allows stopping a standalone container but not other lifecycle verbs', () => {
+    expect(isAllowedHostCommand('podman stop nanoclaw-v2-matrix-vmaz-1785607868242')).toBe(true);
+    expect(isAllowedHostCommand('podman stop -t 0 caddy')).toBe(true);
+    expect(isAllowedHostCommand('docker stop my-container')).toBe(true);
+    expect(isAllowedHostCommand('podman start caddy')).toBe(false);
+    expect(isAllowedHostCommand('podman restart caddy')).toBe(false);
+    expect(isAllowedHostCommand('podman kill caddy')).toBe(false);
+  });
+
+  it('refuses stopping every container at once', () => {
+    expect(isAllowedHostCommand('podman stop --all')).toBe(false);
+    expect(isAllowedHostCommand('podman stop -a')).toBe(false);
+    expect(isAllowedHostCommand('docker stop --all')).toBe(false);
+    expect(isAllowedHostCommand('podman stop -t 5 --all')).toBe(false);
+  });
+
   it('allows read-only tailscale monitoring but not mutations', () => {
     expect(isAllowedHostCommand('tailscale status')).toBe(true);
     expect(isAllowedHostCommand('tailscale status --json')).toBe(true);

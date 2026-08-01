@@ -49,8 +49,11 @@ const SELF_KILL_PATTERN =
 // Includes read-only inspection (`logs`, `ps`) so the agent can read container
 // logs and status on the host (e.g. `podman logs caddy`), plus read-only
 // tailscale monitoring (status/ip/netcheck/… — never up/down/set/login).
+// `stop` is here for containers with no compose project — notably a wedged
+// `nanoclaw-v2-*` agent container, which `podman compose stop` cannot name.
+// SELF_KILL_PATTERN below still blocks stopping the host process itself.
 const ALLOWED_VERB =
-  /^(podman\s+(build|logs|ps)|docker\s+(build|logs|ps)|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|tailscale\s+(status|ip|netcheck|ping|whois|version|licenses|list|metric|(dns|lock|exit-node)\s+(status|list)))(\s|$)/i;
+  /^(podman\s+(build|logs|ps|stop)|docker\s+(build|logs|ps|stop)|podman\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|docker\s+compose\s+(build|run|up|down|start|stop|restart|ps|logs)|tailscale\s+(status|ip|netcheck|ping|whois|version|licenses|list|metric|(dns|lock|exit-node)\s+(status|list)))(\s|$)/i;
 
 // Shell control operators that could chain another command after the
 // allowed verb. A single `cd <abs> && ` prefix is stripped before this
@@ -58,6 +61,11 @@ const ALLOWED_VERB =
 const SHELL_CONTROL = /(\|\||&&|;|`|\$\()/;
 const BARE_PIPE = /(^|\s)\|(\s|$)/;
 const CD_PREFIX = /^cd\s+(\/[^\s;&|`$()]+)\s+&&\s+/;
+
+// `stop --all` would take down every container on the host — Matrix included,
+// which is the channel an approval to start them again has to arrive on.
+// Stopping named containers is the point; stopping all of them never is.
+const STOP_ALL = /^(podman|docker)\s+stop\s+(.*\s)?(--all|-a)(\s|$)/i;
 
 export function wouldKillHostProcess(command: string): boolean {
   return SELF_KILL_PATTERN.test(command);
@@ -68,6 +76,7 @@ export function isAllowedHostCommand(command: string): boolean {
   const cdMatch = cmd.match(CD_PREFIX);
   if (cdMatch) cmd = cmd.slice(cdMatch[0].length);
   if (!ALLOWED_VERB.test(cmd)) return false;
+  if (STOP_ALL.test(cmd)) return false;
   if (SHELL_CONTROL.test(cmd)) return false;
   if (BARE_PIPE.test(cmd)) return false;
   return true;

@@ -261,14 +261,13 @@ function createPreCompactHook(assistantName?: string): HookCallback {
 // ── Provider ──
 
 /**
- * Claude Code auto-compacts context at this window (tokens). Kept here so
- * the generic bootstrap doesn't need to know about Claude-specific env vars.
+ * Claude Code auto-compacts context at this window (tokens). Sized for the
+ * 1M-context models; compaction fires at roughly 80% of this value.
  *
- * Operator override: set CLAUDE_CODE_AUTO_COMPACT_WINDOW in the host env to
- * raise or lower the threshold without editing source — useful when running
- * with a 1M-context model variant or when emergency-tuning a deployment.
+ * Note: the env override below only works if the var is explicitly forwarded
+ * into the container — buildContainerArgs does not pass host env through.
  */
-const CLAUDE_CODE_AUTO_COMPACT_WINDOW = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '165000';
+const CLAUDE_CODE_AUTO_COMPACT_WINDOW = process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '700000';
 
 /**
  * Stale-session detection. Matches Claude Code's error text when a

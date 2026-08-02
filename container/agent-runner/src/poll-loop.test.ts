@@ -6,9 +6,13 @@ import { getUndeliveredMessages } from './db/messages-out.js';
 import { formatMessages, extractRouting } from './formatter.js';
 import { MockProvider } from './providers/mock.js';
 import { sendProgress } from './poll-loop.js';
+import { setLastAddressed } from './current-batch.js';
 
 beforeEach(() => {
   initTestSessionDb();
+  // lastAddressed is module-level state normally reset per batch by the poll
+  // loop; clear it so each test starts from the "agent hasn't spoken" default.
+  setLastAddressed(null);
 });
 
 afterEach(() => {
@@ -308,6 +312,50 @@ describe('progress forwarding', () => {
     sendProgress('Halfway through', routing);
 
     expect(getUndeliveredMessages()).toHaveLength(0);
+  });
+
+  it('follows the destination the agent addressed, not the triggering room', () => {
+    // Shared session: woken from the DM room, but the agent chose to answer in
+    // the project room via send_message. Progress should follow the agent.
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, content)
+         VALUES ('m1', 'chat', datetime('now'), 'pending', 'dm-room', 'matrix', 'dm-thread', '{"text":"go build it"}')`,
+      )
+      .run();
+    const routing = extractRouting(getPendingMessages());
+
+    setLastAddressed({ platformId: 'project-room', channelType: 'matrix', threadId: 'proj-thread' });
+    sendProgress('Compiling sprites', routing);
+
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(out[0].platform_id).toBe('project-room');
+    expect(out[0].channel_type).toBe('matrix');
+    expect(out[0].thread_id).toBe('proj-thread');
+    // in_reply_to still tracks the triggering inbound id for a2a correlation.
+    expect(out[0].in_reply_to).toBe('m1');
+  });
+
+  it('honours a cross-channel destination with a null thread', () => {
+    // Agent addressed a destination on a different channel; the resolved thread
+    // is null there, and the ping must not inherit the trigger room's thread.
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, content)
+         VALUES ('m1', 'chat', datetime('now'), 'pending', 'chan-123', 'matrix', 'thread-456', '{"text":"do it"}')`,
+      )
+      .run();
+    const routing = extractRouting(getPendingMessages());
+
+    setLastAddressed({ platformId: 'slack-chan', channelType: 'slack', threadId: null });
+    sendProgress('Working', routing);
+
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(out[0].platform_id).toBe('slack-chan');
+    expect(out[0].channel_type).toBe('slack');
+    expect(out[0].thread_id).toBeNull();
   });
 });
 

@@ -3,7 +3,7 @@ import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } 
 import { writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
-import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
+import { clearCurrentInReplyTo, getLastAddressed, setCurrentInReplyTo } from './current-batch.js';
 import {
   formatMessages,
   extractRouting,
@@ -437,19 +437,29 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
  * and nowhere else, so the only way to tell a long turn apart from a wedged
  * one was to ask.
  *
- * Routing is the initial batch's, not per-destination: a progress ping belongs
- * in the conversation that asked for the work, not fanned out to every
- * destination a shared session happens to reach.
+ * The ping follows the destination the agent most recently addressed via
+ * `send_message` this batch — a shared session (one agent reachable from many
+ * rooms) may answer in a different conversation than the one that woke it, and
+ * the ping belongs where the agent is actually talking. Before the agent has
+ * addressed anyone, it falls back to the batch's routing — the conversation
+ * that asked for the work — rather than fanning out to every destination.
+ *
+ * `in_reply_to` stays the batch's inbound id in both cases, matching how
+ * `send_message` stamps its own rows for a2a return-path correlation.
  */
 export function sendProgress(message: string, routing: RoutingContext): void {
-  if (!routing.platformId || !routing.channelType) return;
+  const addressed = getLastAddressed();
+  const platformId = addressed?.platformId ?? routing.platformId;
+  const channelType = addressed?.channelType ?? routing.channelType;
+  const threadId = addressed ? addressed.threadId : routing.threadId;
+  if (!platformId || !channelType) return;
   writeMessageOut({
     id: generateId(),
     in_reply_to: routing.inReplyTo,
     kind: 'chat',
-    platform_id: routing.platformId,
-    channel_type: routing.channelType,
-    thread_id: routing.threadId,
+    platform_id: platformId,
+    channel_type: channelType,
+    thread_id: threadId,
     content: JSON.stringify({ text: `… ${message}` }),
   });
 }

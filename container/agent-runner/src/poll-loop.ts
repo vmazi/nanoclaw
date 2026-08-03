@@ -437,22 +437,29 @@ function handleEvent(event: ProviderEvent, routing: RoutingContext): void {
  * and nowhere else, so the only way to tell a long turn apart from a wedged
  * one was to ask.
  *
- * The ping follows the destination the agent most recently addressed via
- * `send_message` this batch — a shared session (one agent reachable from many
- * rooms) may answer in a different conversation than the one that woke it, and
- * the ping belongs where the agent is actually talking. Before the agent has
- * addressed anyone, it falls back to the batch's routing — the conversation
- * that asked for the work — rather than fanning out to every destination.
+ * The batch's own conversation wins whenever it is a real user channel. A
+ * session belongs to exactly one messaging group, so that group is where its
+ * progress belongs.
+ *
+ * Following `lastAddressed` first was wrong: a single interim `send_message`
+ * to another destination silently redirected every later ping for the rest of
+ * the batch. The Megabots-room session messaged the operator once and then put
+ * 21 progress updates into the operator DM instead of the room.
+ *
+ * `lastAddressed` remains the fallback for batches with no user-facing origin
+ * — agent-to-agent wakes and system rows arrive with channel_type 'agent',
+ * which is not a conversation anyone is reading.
  *
  * `in_reply_to` stays the batch's inbound id in both cases, matching how
  * `send_message` stamps its own rows for a2a return-path correlation.
  */
 export function sendProgress(message: string, routing: RoutingContext): void {
-  const addressed = getLastAddressed();
+  const batchIsUserFacing = !!routing.platformId && !!routing.channelType && routing.channelType !== 'agent';
+  const addressed = batchIsUserFacing ? null : getLastAddressed();
   const platformId = addressed?.platformId ?? routing.platformId;
   const channelType = addressed?.channelType ?? routing.channelType;
   const threadId = addressed ? addressed.threadId : routing.threadId;
-  if (!platformId || !channelType) return;
+  if (!platformId || !channelType || channelType === 'agent') return;
   writeMessageOut({
     id: generateId(),
     in_reply_to: routing.inReplyTo,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 
-import { ClaudeProvider, withLongContext } from './claude.js';
+import { ClaudeProvider, describeTask, withLongContext } from './claude.js';
 
 describe('ClaudeProvider.isSessionInvalid', () => {
   const provider = new ClaudeProvider();
@@ -42,5 +42,28 @@ describe('withLongContext', () => {
   it('is idempotent and passes through an unset model', () => {
     expect(withLongContext('claude-opus-5[1m]')).toBe('claude-opus-5[1m]');
     expect(withLongContext(undefined)).toBeUndefined();
+  });
+});
+
+describe('describeTask', () => {
+  it('passes a human summary straight through', () => {
+    expect(describeTask('Re-bake and rebuild guide')).toBe('Re-bake and rebuild guide');
+    expect(describeTask('Find near-duplicate syncro art')).toBe('Find near-duplicate syncro art');
+  });
+
+  it('replaces raw commands, which render as code snippets in chat', () => {
+    expect(describeTask('timeout 1800 python3 bake_syncros.py --emit 2>&1 | tail -3')).toBe('still working');
+    expect(describeTask("cat > /tmp/synshots.py <<'EOF'\nimport sys")).toBe('still working');
+    expect(describeTask('cd /workspace/gba/rom && ls -la megabots.gba')).toBe('still working');
+    expect(describeTask('python3 -c "')).toBe('still working');
+  });
+
+  it('says so when the task failed', () => {
+    expect(describeTask('rm -rf /tmp/x', 'failed')).toBe('background task failed');
+  });
+
+  it('handles a missing summary', () => {
+    expect(describeTask(undefined)).toBe('still working');
+    expect(describeTask('   ')).toBe('still working');
   });
 });

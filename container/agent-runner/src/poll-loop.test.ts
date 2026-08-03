@@ -314,36 +314,36 @@ describe('progress forwarding', () => {
     expect(getUndeliveredMessages()).toHaveLength(0);
   });
 
-  it('follows the destination the agent addressed, not the triggering room', () => {
-    // Shared session: woken from the DM room, but the agent chose to answer in
-    // the project room via send_message. Progress should follow the agent.
+  it('stays in the batch room even after the agent addresses somewhere else', () => {
+    // The regression this replaced: the Megabots-room session sent the operator
+    // one interim message, and every later ping followed it into the operator
+    // DM — 21 of them — instead of staying in the room doing the work.
     getInboundDb()
       .prepare(
         `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, content)
-         VALUES ('m1', 'chat', datetime('now'), 'pending', 'dm-room', 'matrix', 'dm-thread', '{"text":"go build it"}')`,
+         VALUES ('m1', 'chat', datetime('now'), 'pending', 'project-room', 'matrix', 'proj-thread', '{"text":"go build it"}')`,
       )
       .run();
     const routing = extractRouting(getPendingMessages());
 
-    setLastAddressed({ platformId: 'project-room', channelType: 'matrix', threadId: 'proj-thread' });
+    setLastAddressed({ platformId: 'operator-dm', channelType: 'matrix', threadId: null });
     sendProgress('Compiling sprites', routing);
 
     const out = getUndeliveredMessages();
     expect(out).toHaveLength(1);
     expect(out[0].platform_id).toBe('project-room');
-    expect(out[0].channel_type).toBe('matrix');
     expect(out[0].thread_id).toBe('proj-thread');
-    // in_reply_to still tracks the triggering inbound id for a2a correlation.
     expect(out[0].in_reply_to).toBe('m1');
   });
 
-  it('honours a cross-channel destination with a null thread', () => {
-    // Agent addressed a destination on a different channel; the resolved thread
-    // is null there, and the ping must not inherit the trigger room's thread.
+  it('falls back to the addressed destination when the batch has no user channel', () => {
+    // Agent-to-agent wakes arrive on channel_type 'agent', which is not a
+    // conversation anyone reads. Here the addressed destination is the only
+    // place a ping can usefully go.
     getInboundDb()
       .prepare(
         `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, content)
-         VALUES ('m1', 'chat', datetime('now'), 'pending', 'chan-123', 'matrix', 'thread-456', '{"text":"do it"}')`,
+         VALUES ('m1', 'chat', datetime('now'), 'pending', 'agent-group-1', 'agent', NULL, '{"text":"peer asked"}')`,
       )
       .run();
     const routing = extractRouting(getPendingMessages());
@@ -356,6 +356,20 @@ describe('progress forwarding', () => {
     expect(out[0].platform_id).toBe('slack-chan');
     expect(out[0].channel_type).toBe('slack');
     expect(out[0].thread_id).toBeNull();
+  });
+
+  it('drops an agent-channel batch with nothing addressed rather than posting to it', () => {
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, kind, timestamp, status, platform_id, channel_type, thread_id, content)
+         VALUES ('m1', 'chat', datetime('now'), 'pending', 'agent-group-1', 'agent', NULL, '{"text":"peer asked"}')`,
+      )
+      .run();
+    const routing = extractRouting(getPendingMessages());
+
+    sendProgress('Working', routing);
+
+    expect(getUndeliveredMessages()).toHaveLength(0);
   });
 });
 

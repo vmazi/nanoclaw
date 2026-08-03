@@ -316,6 +316,32 @@ const STALE_SESSION_RE = /no conversation found|ENOENT.*\.jsonl|session.*not fou
  */
 const POISONED_TRANSCRIPT_RE = /exceeds the dimension limit|start a new session/i;
 
+/**
+ * Turn a `task_notification` into something worth showing a human.
+ *
+ * `summary` is usually a short phrase written for exactly this — "Re-bake and
+ * rebuild guide", "Find near-duplicate syncro art". But it sometimes falls
+ * back to the raw command instead ("timeout 1800 python3 bake.py 2>&1 | tail
+ * -3", or a `cat <<EOF` heredoc spanning lines). Forwarded as-is those render
+ * as a code snippet in chat, which is noise rather than progress — measured at
+ * 12 of 83 on a real session.
+ *
+ * Prose is passed through untouched; anything that reads like a shell command
+ * is replaced with a plain status line.
+ */
+export function describeTask(summary?: string, status?: string): string {
+  const s = (summary ?? '').trim();
+  const looksLikeCommand =
+    !s ||
+    s.includes('\n') ||
+    /^(cd|ls|cat|rm|mv|cp|grep|sed|awk|git|bash|sh|for|while|if|curl|wget|make|npm|npx|bun|node|python3?|timeout|echo|find|chmod|podman|docker|\.\/)\b/.test(
+      s,
+    ) ||
+    /(&&|\|\||[|><]|\$\(|`)/.test(s);
+  if (!looksLikeCommand) return s;
+  return status === 'failed' ? 'background task failed' : 'still working';
+}
+
 export class ClaudeProvider implements AgentProvider {
   readonly supportsNativeSlashCommands = true;
 
@@ -436,8 +462,8 @@ export class ClaudeProvider implements AgentProvider {
           const detail = meta?.pre_tokens ? ` (${meta.pre_tokens.toLocaleString()} tokens compacted)` : '';
           yield { type: 'result', text: `Context compacted${detail}.` };
         } else if (message.type === 'system' && (message as { subtype?: string }).subtype === 'task_notification') {
-          const tn = message as { summary?: string };
-          yield { type: 'progress', message: tn.summary || 'Task notification' };
+          const tn = message as { summary?: string; status?: string };
+          yield { type: 'progress', message: describeTask(tn.summary, tn.status) };
         }
       }
       log(`Query completed after ${messageCount} SDK messages`);

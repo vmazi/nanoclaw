@@ -15,10 +15,9 @@ import './host-run.js';
 import './worktree-agent.js';
 import './matrix-rooms.js';
 import { startMcpServer } from './server.js';
+import { logger } from '../log.js';
 
-function log(msg: string): void {
-  console.error(`[mcp-tools] ${msg}`);
-}
+const log = logger('mcp-tools');
 
 startMcpServer().catch((err) => {
   log(`MCP server error: ${err instanceof Error ? err.message : String(err)}`);

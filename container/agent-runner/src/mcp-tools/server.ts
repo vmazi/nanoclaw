@@ -13,10 +13,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 
 import type { McpToolDefinition } from './types.js';
+import { logger } from '../log.js';
 
-function log(msg: string): void {
-  console.error(`[mcp-tools] ${msg}`);
-}
+const log = logger('mcp-tools');
 
 const allTools: McpToolDefinition[] = [];
 const toolMap = new Map<string, McpToolDefinition>();

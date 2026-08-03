@@ -7,10 +7,9 @@ import { clearContainerToolInFlight, setContainerToolInFlight } from '../db/conn
 import { IMAGE_PATH_RE, readImageDims } from '../image-dims.js';
 import { registerProvider } from './provider-registry.js';
 import type { AgentProvider, AgentQuery, McpServerConfig, ProviderEvent, ProviderOptions, QueryInput } from './types.js';
+import { logger } from '../log.js';
 
-function log(msg: string): void {
-  console.error(`[claude-provider] ${msg}`);
-}
+const log = logger('claude-provider');
 
 // Deferred SDK builtins that either sidestep nanoclaw's own scheduling or
 // don't fit our async message-passing model (they're designed for Claude

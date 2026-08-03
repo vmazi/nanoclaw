@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { MessageInRow } from '../db/messages-in.js';
 import { touchHeartbeat } from '../db/connection.js';
+import { logger } from '../log.js';
 
 const SCRIPT_TIMEOUT_MS = 30_000;
 // Grace between SIGTERM and the SIGKILL escalation when a script overruns.
@@ -14,9 +15,7 @@ export interface ScriptResult {
   data?: unknown;
 }
 
-function log(msg: string): void {
-  console.error(`[task-script] ${msg}`);
-}
+const log = logger('task-script');
 
 export async function runScript(script: string, taskId: string): Promise<ScriptResult | null> {
   const scriptPath = path.join('/tmp', `task-script-${taskId}.sh`);

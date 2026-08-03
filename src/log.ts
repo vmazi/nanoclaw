@@ -30,13 +30,19 @@ function formatData(data: Record<string, unknown>): string {
   return parts.length ? ' ' + parts.join(' ') : '';
 }
 
+/**
+ * Carries the date as well as the time. The host runs for days at a stretch,
+ * so a bare "03:14:02" is ambiguous in a log that spans several of them —
+ * and it cannot be lined up against a container log without one. Same format
+ * as container/agent-runner/src/log.ts so the two read side by side.
+ */
 function ts(): string {
   const d = new Date();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  const ms = String(d.getMilliseconds()).padStart(3, '0');
-  return `${hh}:${mm}:${ss}.${ms}`;
+  const p = (n: number, w = 2): string => String(n).padStart(w, '0');
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(), 3)}`
+  );
 }
 
 function emit(level: Level, msg: string, data?: Record<string, unknown>): void {

@@ -32,10 +32,9 @@ import { buildSystemPromptAddendum } from './destinations.js';
 import './providers/index.js';
 import { createProvider, type ProviderName } from './providers/factory.js';
 import { runPollLoop } from './poll-loop.js';
+import { logger } from './log.js';
 
-function log(msg: string): void {
-  console.error(`[agent-runner] ${msg}`);
-}
+const log = logger('agent-runner');
 
 const CWD = '/workspace/agent';
 

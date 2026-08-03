@@ -11,10 +11,9 @@ import { getSessionRouting } from '../db/session-routing.js';
 import { TIMEZONE, parseZonedToUtc } from '../timezone.js';
 import { registerTools } from './server.js';
 import type { McpToolDefinition } from './types.js';
+import { logger } from '../log.js';
 
-function log(msg: string): void {
-  console.error(`[mcp-tools] ${msg}`);
-}
+const log = logger('mcp-tools');
 
 function generateId(): string {
   return `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

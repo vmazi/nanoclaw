@@ -6,6 +6,9 @@
  * instead of environment variables.
  */
 import fs from 'fs';
+import { logger } from './log.js';
+
+const log = logger('config');
 
 const CONFIG_PATH = '/workspace/agent/container.json';
 
@@ -35,7 +38,7 @@ export function loadConfig(): RunnerConfig {
   try {
     raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
   } catch {
-    console.error(`[config] Failed to read ${CONFIG_PATH}, using defaults`);
+    log(`Failed to read ${CONFIG_PATH}, using defaults`);
   }
 
   _config = {

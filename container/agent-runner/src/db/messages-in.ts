@@ -38,6 +38,12 @@ export interface MessageInRow {
   channel_type: string | null;
   thread_id: string | null;
   content: string;
+  /**
+   * 1 = deliver only on a fresh container's first poll (system startup/restart
+   * wake pings); 0 = normal. Optional because pre-v2.0.48 DBs lack the column,
+   * so `SELECT *` returns it as undefined there.
+   */
+  on_wake?: number;
 }
 
 // Cap on how many messages reach the agent in one prompt. Read from

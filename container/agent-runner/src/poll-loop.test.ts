@@ -303,6 +303,55 @@ describe('progress forwarding', () => {
     expect(out[0].in_reply_to).toBe('m1');
   });
 
+  it('anchors routing on the room message, not a co-batched wake-ping', () => {
+    // A DM-routed on_wake startup ping can land in a room session's inbound and,
+    // as the oldest row on a fresh container's first poll, head the batch. If it
+    // set the routing, every progress ping and in_reply_to for the whole turn
+    // would leak to the operator DM instead of the room — the Megabots
+    // regression where 100+ "… still working" pings landed in the DM.
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, seq, kind, timestamp, status, platform_id, channel_type, thread_id, on_wake, content)
+         VALUES ('wake', 2, 'chat', datetime('now'), 'pending', 'operator-dm', 'matrix', NULL, 1, '{"text":"[wake-ping] you are online"}')`,
+      )
+      .run();
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, seq, kind, timestamp, status, platform_id, channel_type, thread_id, content)
+         VALUES ('m1', 4, 'chat', datetime('now'), 'pending', 'megabots-room', 'matrix', 'proj-thread', '{"text":"bake the sprites"}')`,
+      )
+      .run();
+    // isFirstPoll=true so the on_wake row rides along and heads the batch.
+    const routing = extractRouting(getPendingMessages(true));
+
+    sendProgress('Baking', routing);
+
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(out[0].platform_id).toBe('megabots-room');
+    expect(out[0].thread_id).toBe('proj-thread');
+    expect(out[0].in_reply_to).toBe('m1');
+  });
+
+  it('still uses the wake ping routing when the batch is nothing but wake rows', () => {
+    // A pure wake — the operator ping alone, no conversation — should reply to
+    // the wake ping's own destination; the fallback must not drop it.
+    getInboundDb()
+      .prepare(
+        `INSERT INTO messages_in (id, seq, kind, timestamp, status, platform_id, channel_type, thread_id, on_wake, content)
+         VALUES ('wake', 2, 'chat', datetime('now'), 'pending', 'operator-dm', 'matrix', NULL, 1, '{"text":"[wake-ping] you are online"}')`,
+      )
+      .run();
+    const routing = extractRouting(getPendingMessages(true));
+
+    sendProgress('Sending the online ping', routing);
+
+    const out = getUndeliveredMessages();
+    expect(out).toHaveLength(1);
+    expect(out[0].platform_id).toBe('operator-dm');
+    expect(out[0].in_reply_to).toBe('wake');
+  });
+
   it('drops the notification when there is no conversation to send it to', () => {
     // Scheduled tasks and wake triggers have no originating channel — there is
     // nowhere to deliver a progress ping, so it must not be written at all.

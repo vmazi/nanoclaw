@@ -102,15 +102,27 @@ export interface RoutingContext {
 
 /**
  * Extract routing context from a batch of messages.
- * Uses the first message's routing fields.
+ *
+ * Anchors on the first *conversational* row, skipping `on_wake` rows. Those are
+ * system-injected startup/restart pings (e.g. the operator wake-ping) and can
+ * carry a different destination than the session's own room — a DM-routed wake
+ * ping that lands in a room session's inbound is the oldest row on a fresh
+ * container's first poll, so it would head the batch. Since the batch's routing
+ * is frozen for the whole turn and drives every progress ping and `in_reply_to`
+ * (see `sendProgress`), letting a wake ping anchor it leaks the room's
+ * "… still working" updates into the operator DM for the rest of the turn —
+ * the Megabots regression.
+ *
+ * Fall back to the first row only when the batch is nothing but wake rows: a
+ * pure wake, where the wake row's own routing is the intended destination.
  */
 export function extractRouting(messages: MessageInRow[]): RoutingContext {
-  const first = messages[0];
+  const anchor = messages.find((m) => !m.on_wake) ?? messages[0];
   return {
-    platformId: first?.platform_id ?? null,
-    channelType: first?.channel_type ?? null,
-    threadId: first?.thread_id ?? null,
-    inReplyTo: first?.id ?? null,
+    platformId: anchor?.platform_id ?? null,
+    channelType: anchor?.channel_type ?? null,
+    threadId: anchor?.thread_id ?? null,
+    inReplyTo: anchor?.id ?? null,
   };
 }
 

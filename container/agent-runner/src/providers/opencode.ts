@@ -121,7 +121,17 @@ export class OpencodeProvider implements AgentProvider {
       autoupdate: false,
     };
 
-    fs.writeFileSync(path.join(cwd, 'opencode.json'), JSON.stringify(config, null, 2));
+    // Written to the global config dir, not the project dir. opencode loads
+    // $XDG_CONFIG_HOME/opencode/opencode.json at boot but only reads a
+    // project opencode.json when it later bootstraps that directory — so a
+    // session created before then resolves the model against a provider list
+    // that doesn't contain ours and fails with ModelUnavailableError.
+    const configDir = path.join(
+      this.env.XDG_CONFIG_HOME || path.join(process.env.HOME || '/home/node', '.config'),
+      'opencode',
+    );
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(path.join(configDir, 'opencode.json'), JSON.stringify(config, null, 2));
   }
 
   private async ensureServer(cwd: string): Promise<void> {
@@ -131,9 +141,24 @@ export class OpencodeProvider implements AgentProvider {
       const child = spawn(OPENCODE_BIN, ['serve', '--port', String(PORT), '--hostname', '127.0.0.1'], {
         cwd,
         env: { ...process.env, ...this.env } as NodeJS.ProcessEnv,
-        stdio: 'ignore',
+        stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
       });
+
+      // Discarding this output once cost an hour: the server failed on an
+      // EACCES it printed to stderr, and all the agent could report was a
+      // generic readiness timeout.
+      const tail: string[] = [];
+      const capture = (buf: Buffer) => {
+        for (const line of buf.toString().split('\n')) {
+          if (!line.trim()) continue;
+          log(`opencode: ${line}`);
+          tail.push(line);
+          if (tail.length > 20) tail.shift();
+        }
+      };
+      child.stdout?.on('data', capture);
+      child.stderr?.on('data', capture);
       child.on('exit', (code) => log(`opencode serve exited: ${code}`));
 
       const deadline = Date.now() + 60_000;
@@ -149,7 +174,10 @@ export class OpencodeProvider implements AgentProvider {
         }
         await sleep(500);
       }
-      throw new Error('opencode serve did not become ready within 60s');
+      throw new Error(
+        `opencode serve did not become ready within 60s` +
+          (tail.length ? `; last output:\n${tail.join('\n')}` : ' (no output)'),
+      );
     })();
 
     return this.serverStarted;

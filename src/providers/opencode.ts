@@ -29,8 +29,14 @@ registerProviderContainerConfig('opencode', (ctx) => {
   const dataDir = path.join(ctx.sessionDir, 'opencode-data');
   fs.mkdirSync(dataDir, { recursive: true });
 
+  // Mounting at .local/share leaves .local itself root-owned, so opencode's
+  // mkdir of a sibling .local/state fails with EACCES and the server never
+  // binds. Every XDG dir it touches has to land inside the one writable mount.
   const env: Record<string, string> = {
     XDG_DATA_HOME: CONTAINER_DATA_HOME,
+    XDG_STATE_HOME: `${CONTAINER_DATA_HOME}/state`,
+    XDG_CACHE_HOME: `${CONTAINER_DATA_HOME}/cache`,
+    XDG_CONFIG_HOME: `${CONTAINER_DATA_HOME}/config`,
     NO_PROXY: '127.0.0.1,localhost',
     no_proxy: '127.0.0.1,localhost',
   };

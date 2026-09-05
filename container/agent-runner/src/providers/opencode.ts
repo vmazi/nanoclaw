@@ -108,6 +108,11 @@ export class OpencodeProvider implements AgentProvider {
         [PROVIDER_ID]: {
           npm: '@ai-sdk/openai-compatible',
           name: 'Self-served (Modal)',
+          // Both, deliberately. `options.baseURL` alone leaves the resolved
+          // model's api.url empty and every call dies with
+          // ModelUnavailableError — which reads like a missing model rather
+          // than a missing address.
+          api: baseURL,
           options: { baseURL, apiKey },
           models: { [this.model.id]: { name: this.model.id } },
         },
@@ -195,8 +200,13 @@ export class OpencodeProvider implements AgentProvider {
       yield { type: 'activity' };
 
       if (!sessionID) {
+        // `location` binds the session to the project directory. Without it
+        // the session drains against projectID=global, where our provider
+        // config was never loaded, and the model resolves as unavailable even
+        // though `opencode run` in the same directory finds it fine.
         const created = await api<{ data: { id: string } }>('POST', '/api/session', {
           model: { providerID: self.model.providerID, id: self.model.id },
+          location: { directory: input.cwd },
         });
         sessionID = created.data.id;
       }

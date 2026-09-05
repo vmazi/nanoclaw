@@ -2,7 +2,9 @@ import path from 'path';
 import type { McpServerConfig, AdditionalMountConfig } from '../../container-config.js';
 import { buildAgentGroupImage, killContainer, wakeContainer } from '../../container-runner.js';
 import { restartAgentGroupContainers } from '../../container-restart.js';
+import { getAgentGroup } from '../../db/agent-groups.js';
 import { getSession } from '../../db/sessions.js';
+import { initGroupFilesystem } from '../../group-init.js';
 import { writeSessionMessage } from '../../session-manager.js';
 import {
   getContainerConfig,
@@ -58,6 +60,14 @@ registerResource({
     },
     { name: 'created_at', type: 'string', description: 'Auto-set.', generated: true },
   ],
+  // A bare agent_groups row is not a usable group: it has no workspace folder
+  // and no container_configs row, so every `groups config` verb fails against
+  // a row that creation never made. create_agent has always done this; the
+  // CLI path did not.
+  afterCreate: (row) => {
+    const group = getAgentGroup(row.id as string);
+    if (group) initGroupFilesystem(group);
+  },
   operations: { list: 'open', get: 'open', create: 'approval', update: 'approval', delete: 'approval' },
   customOperations: {
     restart: {

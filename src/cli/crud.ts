@@ -69,6 +69,13 @@ export interface ResourceDef {
   };
   /** Non-standard verbs (grant, revoke, add, remove, restart, etc.). */
   customOperations?: Record<string, CustomOperation>;
+  /**
+   * Run after a successful generic create, with the inserted row. For
+   * resources whose row alone is not a usable entity — an agent group also
+   * needs its workspace folder and container_configs row, without which
+   * every later `config` command fails on a row that was never made.
+   */
+  afterCreate?: (row: Record<string, unknown>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,6 +165,7 @@ function genericCreate(def: ResourceDef) {
     getDb()
       .prepare(`INSERT INTO ${def.table} (${colNames.join(', ')}) VALUES (${placeholders.join(', ')})`)
       .run(values);
+    def.afterCreate?.(values);
     return values;
   };
 }

@@ -176,6 +176,20 @@ function genericUpdate(def: ResourceDef) {
     const id = args.id as string;
     if (!id) throw new Error(`${def.name} id is required`);
 
+    // A flag naming a real but non-updatable column was silently dropped, so
+    // `wirings update --agent-group-id X --engage-mode pattern` reported
+    // success having changed only the engage mode — the caller believes the
+    // wiring moved and it did not. Refuse instead of half-applying.
+    const readOnly = def.columns
+      .filter((c) => !c.updatable && c.name !== def.idColumn && args[c.name] !== undefined)
+      .map((c) => '--' + c.name.replace(/_/g, '-'));
+    if (readOnly.length > 0) {
+      throw new Error(
+        `cannot update ${readOnly.join(', ')} on a ${def.name} — ` +
+          `these are set at creation. Delete and recreate to change them.`,
+      );
+    }
+
     const updates: Record<string, unknown> = {};
     for (const col of updatableCols) {
       const v = args[col.name];

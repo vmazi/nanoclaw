@@ -87,8 +87,11 @@ registerResource({
         }
         const message = args.message as string | undefined;
 
-        // From an agent: scope to the calling session only
-        if (ctx.caller === 'agent') {
+        // From an agent restarting its *own* group: scope to the calling
+        // session only. Targeting another group used to fall in here too,
+        // which built the right image and then killed the caller's container
+        // instead of the target's.
+        if (ctx.caller === 'agent' && id === ctx.agentGroupId) {
           if (message) {
             writeSessionMessage(id, ctx.sessionId, {
               id: `restart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
